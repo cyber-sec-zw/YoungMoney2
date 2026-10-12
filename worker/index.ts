@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 
-export interface Env { DB: D1Database; MEDIA: R2Bucket; PILOT_INVITE_CODE?: string }
+export interface Env { DB: D1Database; MEDIA?: R2Bucket; PILOT_INVITE_CODE?: string }
 
 const encoder = new TextEncoder();
 const ownedTables = new Set(['trades', 'journal_entries', 'trader_strategies', 'strategy_entry_models', 'strategy_checklist_items', 'pre_trade_checklist', 'trading_plans', 'goals', 'backtest_results', 'forward_trades', 'trading_rules', 'market_sessions', 'trading_setups', 'strategy_test_sessions', 'strategy_test_trades', 'resources', 'notes', 'study_materials', 'brokers', 'charting_tools', 'weekly_reviews', 'goal_templates', 'trading_accounts', 'trading_account_adjustments', 'instrument_favorites', 'market_instruments']);
@@ -106,7 +106,7 @@ async function databaseRoute(request: Request, env: Env, user: Record<string, un
 }
 
 async function mediaRoute(request: Request, env: Env, user: Record<string, unknown>, url: URL) {
-  if (!env.MEDIA) return response({ error: 'Private media storage is not configured.' }, 503);
+  if (!env.MEDIA) return response({ error: 'File attachments are disabled in this no-cost pilot. Text journal capture is available.' }, 503);
   const owner = String(user.id);
   if (request.method === 'GET' && url.pathname === '/api/media/list') {
     const prefix = url.searchParams.get('prefix') || owner;
