@@ -1,0 +1,62 @@
+import type { MarketInstrument } from '@/lib/types';
+
+const created_at = '2026-01-01T00:00:00.000Z';
+type SeedRow = [string, string, MarketInstrument['asset_class'], string, string | null, string, number, number, number, string, number, number, number?];
+
+/** Static, clearly illustrative fallbacks for preview and first-run use. */
+const rows: SeedRow[] = [
+  ['EUR/USD','Euro / US Dollar','fx','FX:EURUSD','EUR','USD',0.00001,5,100000,'lots',1.085,0.1,0.0001],
+  ['GBP/USD','British Pound / US Dollar','fx','FX:GBPUSD','GBP','USD',0.00001,5,100000,'lots',1.27,0.1,0.0001],
+  ['USD/JPY','US Dollar / Japanese Yen','fx','FX:USDJPY','USD','JPY',0.001,3,100000,'lots',150,0.1,0.01],
+  ['USD/ZAR','US Dollar / South African Rand','fx','FX:USDZAR','USD','ZAR',0.0001,5,100000,'lots',18.5,0.1,0.0001],
+  ['USD/ZWL','US Dollar / Zimbabwean Dollar','fx','FX:USDZWL','USD','ZWL',0.0001,5,100000,'lots',13.5,0.1,0.0001],
+  ['AUD/USD','Australian Dollar / US Dollar','fx','FX:AUDUSD','AUD','USD',0.00001,5,100000,'lots',0.66,0.1,0.0001],
+  ['NZD/USD','New Zealand Dollar / US Dollar','fx','FX:NZDUSD','NZD','USD',0.00001,5,100000,'lots',0.61,0.1,0.0001],
+  ['USD/CAD','US Dollar / Canadian Dollar','fx','FX:USDCAD','USD','CAD',0.00001,5,100000,'lots',1.36,0.1,0.0001],
+  ['USD/CHF','US Dollar / Swiss Franc','fx','FX:USDCHF','USD','CHF',0.00001,5,100000,'lots',0.9,0.1,0.0001],
+  ['EUR/GBP','Euro / British Pound','fx','FX:EURGBP','EUR','GBP',0.00001,5,100000,'lots',0.85,0.1,0.0001],
+  ['EUR/JPY','Euro / Japanese Yen','fx','FX:EURJPY','EUR','JPY',0.001,3,100000,'lots',162,0.1,0.01],
+  ['GBP/JPY','British Pound / Japanese Yen','fx','FX:GBPJPY','GBP','JPY',0.001,3,100000,'lots',190,0.1,0.01],
+  ['XAU/USD','Gold / US Dollar','metal','OANDA:XAUUSD','XAU','USD',0.01,2,100,'lots',2300,0.01],
+  ['XAG/USD','Silver / US Dollar','metal','OANDA:XAGUSD','XAG','USD',0.001,3,5000,'lots',28,0.01],
+  ['US30','Dow Jones CFD','index','CAPITALCOM:US30','USD','USD',1,0,1,'contracts',39000,1],
+  ['NAS100','Nasdaq 100 CFD','index','CAPITALCOM:US100','USD','USD',0.1,1,1,'contracts',18000,1],
+  ['SPX500','S&P 500 CFD','index','CAPITALCOM:US500','USD','USD',0.1,1,1,'contracts',5200,1],
+  ['DAX40','Germany 40 CFD','index','CAPITALCOM:DE40','EUR','EUR',0.1,1,1,'contracts',18500,1],
+  ['BTC/USD','Bitcoin / US Dollar','crypto','COINBASE:BTCUSD','BTC','USD',0.01,2,1,'units',65000,0.01],
+  ['ETH/USD','Ether / US Dollar','crypto','COINBASE:ETHUSD','ETH','USD',0.01,2,1,'units',3500,0.1],
+  ['SOL/USD','Solana / US Dollar','crypto','COINBASE:SOLUSD','SOL','USD',0.01,2,1,'units',150,1],
+  ['AAPL','Apple Inc.','stock','NASDAQ:AAPL',null,'USD',0.01,2,1,'shares',190,1],
+  ['MSFT','Microsoft Corp.','stock','NASDAQ:MSFT',null,'USD',0.01,2,1,'shares',420,1],
+  ['NVDA','NVIDIA Corp.','stock','NASDAQ:NVDA',null,'USD',0.01,2,1,'shares',120,1],
+  ['TSLA','Tesla Inc.','stock','NASDAQ:TSLA',null,'USD',0.01,2,1,'shares',250,1],
+  ['ES','E-mini S&P 500','future','CME_MINI:ES1!','USD','USD',0.25,2,50,'contracts',5200,1],
+  ['NQ','E-mini Nasdaq 100','future','CME_MINI:NQ1!','USD','USD',0.25,2,20,'contracts',18000,1],
+  ['GC','Gold Futures','future','COMEX:GC1!','USD','USD',0.1,1,100,'contracts',2300,1],
+  ['CL','Crude Oil Futures','energy','NYMEX:CL1!','USD','USD',0.01,2,1000,'contracts',75,1],
+  ['NG','Natural Gas Futures','energy','NYMEX:NG1!','USD','USD',0.001,3,10000,'contracts',3,1],
+  ['ZC','Corn Futures','agriculture','CBOT:ZC1!','USD','USD',0.25,2,50,'contracts',450,1],
+  ['ZW','Wheat Futures','agriculture','CBOT:ZW1!','USD','USD',0.25,2,50,'contracts',600,1],
+];
+
+export const DEFAULT_INSTRUMENTS: MarketInstrument[] = rows.map(([symbol, display_name, asset_class, chart_symbol, base_currency, quote_currency, price_increment, price_precision, contract_multiplier, quantity_unit, example_price, example_size, pip_size]) => ({
+  id: `seed:${symbol}`,
+  user_id: null,
+  symbol,
+  display_name,
+  asset_class,
+  chart_symbol,
+  base_currency,
+  quote_currency,
+  price_increment,
+  pip_size: pip_size ?? null,
+  price_precision,
+  contract_multiplier,
+  tick_value: price_increment * contract_multiplier,
+  quantity_unit,
+  example_price,
+  example_size,
+  default_stop_ticks: 20,
+  default_target_r: 2,
+  created_at,
+}));

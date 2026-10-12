@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "trade-journal-pro",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-10",
+  "assets": { "directory": "./dist", "not_found_handling": "single-page-application" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "trade-journal-pro",
+      "database_id": "2808bd1e-1b85-49c0-8f7b-29ac38560223"
+    }
+  ]
+}
