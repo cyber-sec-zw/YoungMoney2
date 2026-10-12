@@ -8,11 +8,20 @@ function useResolvedSource(source: string | null | undefined) {
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
+    let objectUrl: string | null = null;
     setUrl(null);
     setFailed(false);
     if (!source) { setFailed(true); return () => { active = false; }; }
-    resolveMediaUrl(source).then(value => { if (active) setUrl(value); }).catch(() => { if (active) setFailed(true); });
-    return () => { active = false; };
+    resolveMediaUrl(source).then(value => {
+      if (active) {
+        if (value.startsWith('blob:')) objectUrl = value;
+        setUrl(value);
+      } else if (value.startsWith('blob:')) URL.revokeObjectURL(value);
+    }).catch(() => { if (active) setFailed(true); });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [source, attempt]);
   return { url, failed, markFailed: () => setFailed(true), retry: () => setAttempt(value => value + 1) };
 }

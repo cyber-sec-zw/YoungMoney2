@@ -9,7 +9,6 @@ interface VoiceRecorderProps {
 
 export function VoiceRecorder({ onUpload, existingUrl }: VoiceRecorderProps) {
   const [recording, setRecording] = useState(false);
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(existingUrl || null);
   const [playing, setPlaying] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -29,16 +28,22 @@ export function VoiceRecorder({ onUpload, existingUrl }: VoiceRecorderProps) {
     };
   }, []);
 
+  useEffect(() => () => {
+    if (audioUrl?.startsWith('blob:')) URL.revokeObjectURL(audioUrl);
+  }, [audioUrl]);
+
   useEffect(() => {
     let active = true;
     if (!existingUrl) { setAudioUrl(null); return () => { active = false; }; }
-    resolveMediaUrl(existingUrl).then(url => { if (active) setAudioUrl(url); }).catch(() => { if (active) setError('This voice note could not be loaded.'); });
+    resolveMediaUrl(existingUrl).then(url => {
+      if (active) setAudioUrl(url);
+      else if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+    }).catch(() => { if (active) setError('This voice note could not be loaded.'); });
     return () => { active = false; };
   }, [existingUrl]);
 
   const startRecording = async () => {
     setError(null);
-    setAudioBlob(null);
     setAudioUrl(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -53,7 +58,6 @@ export function VoiceRecorder({ onUpload, existingUrl }: VoiceRecorderProps) {
 
       recorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        setAudioBlob(blob);
         setAudioUrl(URL.createObjectURL(blob));
         streamRef.current?.getTracks().forEach(t => t.stop());
         await uploadBlob(blob);
@@ -98,7 +102,6 @@ export function VoiceRecorder({ onUpload, existingUrl }: VoiceRecorderProps) {
   };
 
   const deleteRecording = () => {
-    setAudioBlob(null);
     setAudioUrl(null);
     setDuration(0);
     onUpload('');

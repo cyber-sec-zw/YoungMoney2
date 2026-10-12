@@ -23,7 +23,7 @@ interface AuthContextValue {
   profile: TraderProfile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUp: (email: string, password: string, displayName: string) => Promise<{ error: string | null }>;
+  signUp: (email: string, password: string, displayName: string, inviteCode: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<TraderProfile>) => Promise<{ error: string | null }>;
   refreshProfile: () => Promise<void>;
@@ -87,11 +87,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error?.message || null };
   };
 
-  const signUp = async (email: string, password: string, displayName: string) => {
+  const signUp = async (email: string, password: string, displayName: string, inviteCode: string) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { display_name: displayName } },
+      options: { data: { display_name: displayName, pilot_invite_code: inviteCode } },
     });
     if (error) return { error: error.message };
     if (data.user) {

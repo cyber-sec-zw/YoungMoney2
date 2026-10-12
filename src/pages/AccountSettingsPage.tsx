@@ -78,9 +78,12 @@ function AdminConsole() {
   const [loading, setLoading] = useState(true); const [actionId, setActionId] = useState<string | null>(null); const [message, setMessage] = useState<{ text: string; kind: 'error' | 'success' }>({ text: '', kind: 'success' });
   const invoke = async (body: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke('admin-user-management', { body });
-    if (error) throw new Error(error.message); if (data?.error) throw new Error(data.error); return data;
+    if (error) throw new Error(error.message);
+    if (!data) throw new Error('The administration service returned no data.');
+    if (data.error) throw new Error(String(data.error));
+    return data;
   };
-  const load = async () => { setLoading(true); try { const [memberResult, auditResult] = await Promise.all([invoke({ action: 'list' }), invoke({ action: 'audit' })]); setMembers(memberResult.members || []); setAudit(auditResult.entries || []); } catch (error) { setMessage({ text: error instanceof Error ? error.message : 'Could not load administration data.', kind: 'error' }); } finally { setLoading(false); } };
+  const load = async () => { setLoading(true); try { const [memberResult, auditResult] = await Promise.all([invoke({ action: 'list' }), invoke({ action: 'audit' })]); setMembers(Array.isArray(memberResult.members) ? memberResult.members as Member[] : []); setAudit(Array.isArray(auditResult.entries) ? auditResult.entries as AuditEntry[] : []); } catch (error) { setMessage({ text: error instanceof Error ? error.message : 'Could not load administration data.', kind: 'error' }); } finally { setLoading(false); } };
   useEffect(() => { load(); }, []);
   const visibleMembers = useMemo(() => members.filter(member => [member.email, member.username, member.display_name].some(value => value?.toLowerCase().includes(query.toLowerCase()))), [members, query]);
   const act = async (action: 'suspend' | 'restore' | 'delete', member: Member) => {

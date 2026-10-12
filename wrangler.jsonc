@@ -10,5 +10,11 @@
       "database_name": "trade-journal-pro",
       "database_id": "2808bd1e-1b85-49c0-8f7b-29ac38560223"
     }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "trade-journal-media"
+    }
   ]
 }

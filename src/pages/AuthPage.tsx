@@ -8,6 +8,7 @@ export function AuthPage({ onBack }: { onBack?: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -23,12 +24,12 @@ export function AuthPage({ onBack }: { onBack?: () => void }) {
         setLoading(false);
         return;
       }
-      if (password.length < 6) {
-        setError('Password must be at least 6 characters.');
+      if (password.length < 8) {
+        setError('Password must be at least 8 characters.');
         setLoading(false);
         return;
       }
-      const { error } = await signUp(email.trim(), password, displayName.trim());
+      const { error } = await signUp(email.trim(), password, displayName.trim(), inviteCode.trim());
       if (error) {
         setError(error);
         setLoading(false);
@@ -161,6 +162,23 @@ export function AuthPage({ onBack }: { onBack?: () => void }) {
                     autoComplete="name"
                   />
                 </div>
+              </div>
+            )}
+
+            {mode === 'signup' && (
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1.5 uppercase tracking-wide">Pilot Invite Code</label>
+                <div className="relative">
+                  <Shield size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+                  <input
+                    className="input-field pl-10"
+                    value={inviteCode}
+                    onChange={e => setInviteCode(e.target.value)}
+                    autoComplete="off"
+                    required
+                  />
+                </div>
+                <p className="mt-1 text-xs text-muted">Ask the workspace owner for the private pilot code.</p>
               </div>
             )}
 

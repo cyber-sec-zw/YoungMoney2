@@ -67,8 +67,12 @@ interface TradingBackup {
 interface DataBackupModalProps { open: boolean; onClose: () => void }
 
 function projectHost(): string {
-  try { return new URL(import.meta.env.VITE_SUPABASE_URL as string).host; }
-  catch { return 'unknown-project'; }
+  const configuredProject = import.meta.env.VITE_SUPABASE_URL;
+  if (configuredProject) {
+    try { return new URL(configuredProject).host; }
+    catch { return 'invalid-project-url'; }
+  }
+  return window.location.host || 'local-workspace';
 }
 
 function encodeBase64(bytes: Uint8Array): string {
