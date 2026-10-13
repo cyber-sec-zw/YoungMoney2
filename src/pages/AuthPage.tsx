@@ -68,7 +68,7 @@ export function AuthPage({ onBack }: { onBack?: () => void }) {
               <TrendingUp size={28} />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">TradeJournal Pro</h1>
+              <h1 className="text-xl font-bold tracking-tight">Young-Money-Fx</h1>
               <p className="text-xs text-white/60">Accountability, not competition</p>
             </div>
           </div>
@@ -119,7 +119,7 @@ export function AuthPage({ onBack }: { onBack?: () => void }) {
             <div className="inline-flex p-3 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-700 text-white mb-3 shadow-lg shadow-orange-500/20">
               <TrendingUp size={28} />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">TradeJournal Pro</h1>
+            <h1 className="text-xl font-bold tracking-tight">Young-Money-Fx</h1>
           </div>
 
           <div className="mb-8">
@@ -128,7 +128,7 @@ export function AuthPage({ onBack }: { onBack?: () => void }) {
             </h2>
             <p className="text-sm text-muted mt-1">
               {mode === 'signin'
-                ? 'Sign in to access your trading journal'
+                ? 'Sign in with your account email and password. The pilot invite code is only for account creation.'
                 : 'Start journaling your trades with accountability'}
             </p>
           </div>

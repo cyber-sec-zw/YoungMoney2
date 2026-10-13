@@ -3,7 +3,7 @@
 export interface Env { DB: D1Database; MEDIA?: R2Bucket; PILOT_INVITE_CODE?: string }
 
 const encoder = new TextEncoder();
-const ownedTables = new Set(['trades', 'journal_entries', 'trader_strategies', 'strategy_entry_models', 'strategy_checklist_items', 'pre_trade_checklist', 'trading_plans', 'goals', 'backtest_results', 'forward_trades', 'trading_rules', 'market_sessions', 'trading_setups', 'strategy_test_sessions', 'strategy_test_trades', 'resources', 'notes', 'study_materials', 'brokers', 'charting_tools', 'weekly_reviews', 'goal_templates', 'trading_accounts', 'trading_account_adjustments', 'instrument_favorites', 'market_instruments']);
+const ownedTables = new Set(['trades', 'journal_entries', 'trader_strategies', 'strategy_entry_models', 'strategy_checklist_items', 'pre_trade_checklist', 'trading_plans', 'risk_settings', 'goals', 'backtest_results', 'forward_trades', 'trading_rules', 'market_sessions', 'trading_setups', 'strategy_test_sessions', 'strategy_test_trades', 'resources', 'notes', 'study_materials', 'brokers', 'charting_tools', 'weekly_reviews', 'goal_templates', 'trading_accounts', 'trading_account_adjustments', 'instrument_favorites', 'market_instruments']);
 const publicTables = new Set(['provider_catalog', 'provider_offerings', 'prop_firm_rule_versions', 'provider_change_reviews']);
 
 function response(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } }); }
@@ -13,7 +13,7 @@ function b64(bytes: ArrayBuffer) { return btoa(String.fromCharCode(...new Uint8A
 function unb64(value: string) { return Uint8Array.from(atob(value), char => char.charCodeAt(0)); }
 async function hashPassword(password: string, salt = b64(crypto.getRandomValues(new Uint8Array(16)))) {
   const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: unb64(salt), iterations: 210000, hash: 'SHA-256' }, key, 256);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: unb64(salt), iterations: 100000, hash: 'SHA-256' }, key, 256);
   return { salt, hash: b64(bits) };
 }
 async function sha(value: string) { return b64(await crypto.subtle.digest('SHA-256', encoder.encode(value))); }
@@ -26,7 +26,7 @@ async function authRoute(request: Request, env: Env, path: string) {
   const input = await request.json<Record<string, string>>();
   if (path === '/api/auth/signup') {
     if (!env.PILOT_INVITE_CODE) return response({ error: 'Workspace sign-up has not been configured.' }, 503);
-    if (!input.invite_code || input.invite_code !== env.PILOT_INVITE_CODE) return response({ error: 'Invalid pilot invite code.' }, 403);
+    if (!input.invite_code || input.invite_code.trim().toLowerCase() !== env.PILOT_INVITE_CODE.trim().toLowerCase()) return response({ error: 'Invalid pilot invite code.' }, 403);
     const accountCount = await env.DB.prepare('SELECT COUNT(*) AS total FROM users').first<{ total: number }>();
     if ((accountCount?.total || 0) >= 10) return response({ error: 'This pilot has reached its 10-account limit.' }, 403);
     const email = input.email?.trim().toLowerCase(); const username = input.username?.trim().toLowerCase(); const password = input.password || ''; const displayName = input.display_name?.trim() || username;
@@ -160,7 +160,46 @@ async function mediaRoute(request: Request, env: Env, user: Record<string, unkno
 }
 
 async function adminRoute(request: Request, env: Env, user: Record<string, unknown>) {
-  if (user.role !== 'admin') return response({ error: 'Administrator access required.' }, 403); const input = await request.json<{ action: string; targetUserId?: string }>(); if (input.action === 'list') { const result = await env.DB.prepare('SELECT id,email,username,display_name,role,account_status,created_at,suspended_at,suspension_expires_at FROM users ORDER BY created_at DESC').all(); return response({ members: result.results }); } if (input.action === 'audit') { const result = await env.DB.prepare('SELECT * FROM admin_audit_log ORDER BY created_at DESC LIMIT 100').all(); return response({ entries: result.results }); } if (!input.targetUserId || input.targetUserId === user.id) return response({ error: 'Choose another member.' }, 400); const target = await env.DB.prepare('SELECT * FROM users WHERE id=?').bind(input.targetUserId).first<Record<string, unknown>>(); if (!target || target.role === 'admin') return response({ error: 'Member not found or protected.' }, 404); if (input.action === 'suspend') { const expiry = new Date(Date.now() + 30 * 86400000).toISOString(); await env.DB.prepare("UPDATE users SET account_status='suspended',suspended_at=?,suspension_expires_at=?,updated_at=? WHERE id=?").bind(now(), expiry, now(), target.id).run(); await env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(target.id).run(); await audit(env.DB, String(user.id), String(target.id), 'suspend', 'success', { recovery_until: expiry }); return response({ ok: true }); } if (input.action === 'restore') { await env.DB.prepare("UPDATE users SET account_status='active',suspended_at=NULL,suspension_expires_at=NULL,updated_at=? WHERE id=?").bind(now(), target.id).run(); await audit(env.DB, String(user.id), String(target.id), 'restore', 'success'); return response({ ok: true }); } if (input.action === 'delete') { await env.DB.prepare('DELETE FROM users WHERE id=?').bind(target.id).run(); await audit(env.DB, String(user.id), String(target.id), 'delete', 'success', { immediate: true }); return response({ ok: true }); } return response({ error: 'Unknown administration action.' }, 400);
+  if (user.role !== 'admin' || user.account_status !== 'active') return response({ error: 'Administrator access required.' }, 403);
+  const input = await request.json<{ action: string; targetUserId?: string }>();
+  if (input.action === 'list') {
+    const result = await env.DB.prepare(`
+      SELECT u.id,u.email,u.username,u.display_name,u.role,u.account_status,u.created_at,u.suspended_at,u.suspension_expires_at,
+        (SELECT COUNT(*) FROM workspace_records r WHERE r.user_id=u.id AND r.table_name='trades') AS trade_count,
+        (SELECT COUNT(*) FROM workspace_records r WHERE r.user_id=u.id AND r.table_name='trading_plans') AS plan_count
+      FROM users u ORDER BY u.created_at DESC
+    `).all();
+    return response({ members: result.results });
+  }
+  if (input.action === 'audit') {
+    const result = await env.DB.prepare('SELECT * FROM admin_audit_log ORDER BY created_at DESC LIMIT 100').all();
+    return response({ entries: result.results });
+  }
+  if (!input.targetUserId || input.targetUserId === user.id) return response({ error: 'Choose another member; administrators cannot change their own access here.' }, 400);
+  const target = await env.DB.prepare('SELECT * FROM users WHERE id=?').bind(input.targetUserId).first<Record<string, unknown>>();
+  if (!target || target.role === 'admin') return response({ error: 'Member not found or protected.' }, 404);
+  if (input.action === 'suspend') {
+    const suspendedAt = now();
+    await env.DB.prepare("UPDATE users SET account_status='suspended',suspended_at=?,suspension_expires_at=NULL,updated_at=? WHERE id=?")
+      .bind(suspendedAt, suspendedAt, target.id).run();
+    await env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(target.id).run();
+    await audit(env.DB, String(user.id), String(target.id), 'suspend', 'success');
+    return response({ ok: true });
+  }
+  if (input.action === 'restore') {
+    await env.DB.prepare("UPDATE users SET account_status='active',suspended_at=NULL,suspension_expires_at=NULL,updated_at=? WHERE id=?")
+      .bind(now(), target.id).run();
+    await audit(env.DB, String(user.id), String(target.id), 'restore', 'success');
+    return response({ ok: true });
+  }
+  if (input.action === 'delete') {
+    await env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(target.id).run();
+    await env.DB.prepare('DELETE FROM workspace_records WHERE user_id=?').bind(target.id).run();
+    await audit(env.DB, String(user.id), String(target.id), 'delete', 'success', { records_deleted: true });
+    await env.DB.prepare('DELETE FROM users WHERE id=?').bind(target.id).run();
+    return response({ ok: true });
+  }
+  return response({ error: 'Unknown administration action.' }, 400);
 }
 
-export default { async fetch(request, env): Promise<Response> { const url = new URL(request.url); if (request.method === 'OPTIONS') return new Response(null, { status: 204 }); try { if (request.method === 'POST' && (url.pathname === '/api/auth/signup' || url.pathname === '/api/auth/signin')) return authRoute(request, env, url.pathname); const user = await currentUser(request, env.DB); if (!user) return response({ error: 'Authentication required.' }, 401); if (request.method === 'GET' && url.pathname === '/api/me') return response({ user: profile(user) }); if (request.method === 'POST' && ['/api/auth/profile', '/api/auth/password', '/api/auth/signout'].includes(url.pathname)) return sessionRoute(request, env, user, url.pathname); if (request.method === 'POST' && url.pathname === '/api/data') return databaseRoute(request, env, user); if (url.pathname.startsWith('/api/media/')) return mediaRoute(request, env, user, url); if (request.method === 'POST' && url.pathname === '/api/admin') return adminRoute(request, env, user); return response({ error: 'Not found.' }, 404); } catch { return response({ error: 'The workspace service could not complete this request.' }, 500); } } } satisfies ExportedHandler<Env>;
+export default { async fetch(request, env): Promise<Response> { const url = new URL(request.url); if (request.method === 'OPTIONS') return new Response(null, { status: 204 }); try { if (request.method === 'GET' && url.pathname === '/api/health') { const readiness = await env.DB.prepare('SELECT 1 AS ready').first<{ ready: number }>(); return readiness?.ready === 1 ? response({ status: 'ok', database: 'connected' }) : response({ status: 'unavailable', database: 'unavailable' }, 503); } if (request.method === 'POST' && (url.pathname === '/api/auth/signup' || url.pathname === '/api/auth/signin')) return authRoute(request, env, url.pathname); const user = await currentUser(request, env.DB); if (!user) return response({ error: 'Authentication required.' }, 401); if (request.method === 'GET' && url.pathname === '/api/me') return response({ user: profile(user) }); if (request.method === 'POST' && ['/api/auth/profile', '/api/auth/password', '/api/auth/signout'].includes(url.pathname)) return sessionRoute(request, env, user, url.pathname); if (request.method === 'POST' && url.pathname === '/api/data') return databaseRoute(request, env, user); if (url.pathname.startsWith('/api/media/')) return mediaRoute(request, env, user, url); if (request.method === 'POST' && url.pathname === '/api/admin') return adminRoute(request, env, user); return response({ error: 'Not found.' }, 404); } catch { return response({ error: 'The workspace service could not complete this request.' }, 500); } } } satisfies ExportedHandler<Env>;

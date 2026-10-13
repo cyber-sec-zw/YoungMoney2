@@ -148,7 +148,7 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
           <div className="inline-flex p-3 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-700 text-white mb-3 shadow-lg shadow-orange-500/20">
             <TrendingUp size={32} />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">TradeJournal Pro</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Young-Money-Fx</h1>
           <p className="text-sm text-muted mt-1">Let's get you set up</p>
         </div>
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { DEFAULT_INSTRUMENTS } from '@/data/defaultInstruments';
+import { DEFAULT_PROP_FIRM_RULE_VERSIONS, DEFAULT_PROVIDER_CATALOG, DEFAULT_PROVIDER_OFFERINGS } from '@/data/providerCatalog';
 import { reportDataError } from '@/lib/recovery';
 import type { Trade, TradeInput, JournalEntry, JournalInput, TraderProfile, TraderStrategy, TraderStrategyInput, StrategyEntryModel, StrategyEntryModelInput, StrategyChecklistItem, StrategyChecklistInput, RiskSettings, RiskSettingsInput, PreTradeChecklistItem, PreTradeChecklistInput, TradingPlan, TradingPlanInput, Goal, GoalInput, BacktestResult, BacktestInput, ForwardTrade, ForwardTradeInput, TradingRule, TradingRuleInput, MarketEvent, MarketEventInput, TradingSetup, TradingSetupInput, StrategyTestSession, StrategyTestSessionInput, StrategyTestTrade, StrategyTestTradeInput, Resource, ResourceInput, Note, NoteInput, StudyMaterial, StudyMaterialInput, Broker, BrokerInput, ChartingTool, ChartingToolInput, WeeklyReview, WeeklyReviewInput, GoalTemplate, GoalTemplateInput, MarketInstrument, MarketInstrumentInput, TradingAccount, TradingAccountInput, TradingAccountAdjustment, TradingAccountAdjustmentInput, ProviderCatalogEntry, ProviderOffering, PropFirmRuleVersion, ProviderChangeReview } from '@/lib/types';
 
@@ -22,18 +23,24 @@ export function useProviderCatalog() {
       supabase.from('prop_firm_rule_versions').select('*').order('verified_at', { ascending: false }),
       supabase.from('provider_change_reviews').select('*,provider_catalog(name),provider_source_watches(source_url)').eq('status', 'pending').order('detected_at', { ascending: false }).limit(50),
     ]);
-    if (providerResult.error) reportDataError('Failed to load provider directory:', providerResult.error);
-    else setProviders((providerResult.data || []) as ProviderCatalogEntry[]);
-    if (offeringResult.error) reportDataError('Failed to load provider offerings:', offeringResult.error);
-    else setOfferings((offeringResult.data || []) as ProviderOffering[]);
-    if (rulesResult.error) reportDataError('Failed to load prop firm rules:', rulesResult.error);
-    else setRuleVersions((rulesResult.data || []) as PropFirmRuleVersion[]);
+    if (providerResult.error) { reportDataError('Failed to load provider directory:', providerResult.error); setProviders(DEFAULT_PROVIDER_CATALOG); }
+    else setProviders(mergeCatalog(DEFAULT_PROVIDER_CATALOG, (providerResult.data || []) as ProviderCatalogEntry[]));
+    if (offeringResult.error) { reportDataError('Failed to load provider offerings:', offeringResult.error); setOfferings(DEFAULT_PROVIDER_OFFERINGS); }
+    else setOfferings(mergeCatalog(DEFAULT_PROVIDER_OFFERINGS, (offeringResult.data || []) as ProviderOffering[]));
+    if (rulesResult.error) { reportDataError('Failed to load prop firm rules:', rulesResult.error); setRuleVersions(DEFAULT_PROP_FIRM_RULE_VERSIONS); }
+    else setRuleVersions(mergeCatalog(DEFAULT_PROP_FIRM_RULE_VERSIONS, (rulesResult.data || []) as PropFirmRuleVersion[]));
     if (reviewResult.error) reportDataError('Failed to load provider review queue:', reviewResult.error);
     else setChangeReviews((reviewResult.data || []) as unknown as ProviderChangeReview[]);
     setLoading(false);
   }, []);
   useEffect(() => { fetchCatalog(); }, [fetchCatalog]);
   return { providers, offerings, ruleVersions, changeReviews, loading, fetchCatalog };
+}
+
+function mergeCatalog<T extends { id: string }>(defaults: T[], live: T[]): T[] {
+  const merged = new Map(defaults.map(item => [item.id, item]));
+  live.forEach(item => merged.set(item.id, { ...merged.get(item.id), ...item }));
+  return [...merged.values()];
 }
 
 export function useMarketInstruments(userId?: string | null) {
@@ -361,12 +368,17 @@ export function useStrategyEntryModels(strategyId?: string | null) {
     if (error) throw error;
     await fetchModels();
   };
+  const updateModel = async (id: string, updates: Partial<StrategyEntryModelInput>) => {
+    const { error } = await supabase.from('strategy_entry_models').update(updates).eq('id', id);
+    if (error) throw error;
+    await fetchModels();
+  };
   const deleteModel = async (id: string) => {
     const { error } = await supabase.from('strategy_entry_models').delete().eq('id', id);
     if (error) throw error;
     await fetchModels();
   };
-  return { models, loading, fetchModels, addModel, deleteModel };
+  return { models, loading, fetchModels, addModel, updateModel, deleteModel };
 }
 
 export function useStrategyChecklist(strategyId?: string | null, entryModelId?: string | null) {

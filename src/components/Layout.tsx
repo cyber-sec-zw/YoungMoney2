@@ -88,7 +88,7 @@ export function Layout({ current, onNavigate, onQuickAdd, children }: LayoutProp
             </span>
           </div>
           <div>
-            <h1 className="font-bold text-sm tracking-tight">TradeJournal Pro</h1>
+            <h1 className="font-bold text-sm tracking-tight">Young-Money-Fx</h1>
             <p className="text-[11px] text-muted">Accountability Journal</p>
           </div>
           <button onClick={() => setMobileOpen(false)} className="ml-auto lg:hidden btn-ghost p-1">
@@ -98,6 +98,19 @@ export function Layout({ current, onNavigate, onQuickAdd, children }: LayoutProp
 
         <nav aria-label="Main navigation" className="relative flex-1 px-3 py-4 overflow-y-auto">
           <div className="space-y-1">
+            <button
+              type="button"
+              data-active={current === 'account-settings'}
+              onClick={() => handleNav('account-settings')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-semibold transition-colors ${
+                current === 'account-settings'
+                  ? 'bg-orange-500/10 text-orange-700 dark:text-orange-300'
+                  : 'text-secondary hover:bg-secondary hover:text-primary'
+              }`}
+            >
+              <Settings size={18} className={current === 'account-settings' ? 'text-orange-500' : ''} />
+              Account Settings
+            </button>
             {NAV_SECTIONS.map(section => {
               const isExpanded = !!expanded[section.id];
               const containsCurrent = section.id === currentSection;
@@ -191,7 +204,7 @@ export function Layout({ current, onNavigate, onQuickAdd, children }: LayoutProp
           </button>
           <div className="flex items-center gap-2">
             <TrendingUp size={18} className="text-orange-500" />
-            <span className="font-bold text-sm">TradeJournal Pro</span>
+            <span className="font-bold text-sm">YM-Fx</span>
           </div>
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-orange-700 flex items-center justify-center text-white text-xs font-bold">
             {initials}

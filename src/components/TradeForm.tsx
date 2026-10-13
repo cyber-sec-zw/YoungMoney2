@@ -102,7 +102,11 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
   useEffect(() => {
     if (initial || !accounts.length) return;
     const defaultAccount = accounts.find(a => a.id === form.account_id) || accounts.find(a => a.is_active) || accounts[0];
-    if (!form.account_id) update('account_id', defaultAccount.id);
+    if (!form.account_id) {
+      update('account_id', defaultAccount.id);
+      if (defaultAccount.broker_name) update('broker', defaultAccount.broker_name);
+      if (defaultAccount.account_type === 'personal' || defaultAccount.account_type === 'propfirm') update('account_type', defaultAccount.account_type);
+    }
     const resolvedPlanId = form.plan_id || defaultAccount.default_plan_id || null;
     if (!form.plan_id && defaultAccount.default_plan_id && plans.some(p => p.id === defaultAccount.default_plan_id)) update('plan_id', defaultAccount.default_plan_id);
     if (!form.strategy_id && defaultAccount.default_strategy_id && strategies.some(s => s.id === defaultAccount.default_strategy_id && s.plan_id === resolvedPlanId)) {
@@ -160,13 +164,15 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
     ...strategyChecklistItems.map(item => ({ ...item, source_scope: form.entry_model_id ? 'entry_model' as const : 'strategy' as const })),
   ];
   const selectedAccount = accounts.find(a => a.id === form.account_id) || null;
+  const selectedPlan = plans.find(plan => plan.id === form.plan_id) || null;
+  const effectiveRiskPercent = selectedPlan?.max_risk_per_trade_pct ?? selectedAccount?.risk_per_trade_pct ?? null;
   const needsConversion = !!selectedInstrument && !!selectedAccount && selectedInstrument.quote_currency !== selectedAccount.base_currency;
   const conversionRate = needsConversion ? Number(form.conversion_rate) : 1;
   const isExamplePrice = examplePriceIsUnconfirmed(form.entry_price, selectedInstrument);
   const sizePresets = selectedInstrument ? SIZE_PRESETS[selectedInstrument.asset_class] || SIZE_PRESETS.custom : SIZE_PRESETS.fx;
   const effectiveBalance = selectedAccount ? selectedAccount.balance + accountTrades.filter(t => t.account_id === selectedAccount.id && t.status === 'closed').reduce((sum, t) => sum + t.pnl, 0) + adjustments.filter(a => a.account_id === selectedAccount.id).reduce((sum, a) => sum + a.amount, 0) : 0;
-  const suggestedSize = selectedInstrument && selectedAccount && form.entry_price && stopLoss && Number(stopLoss) && conversionRate > 0
-    ? calculatePositionSize(selectedInstrument, effectiveBalance, selectedAccount.risk_per_trade_pct, form.entry_price, Number(stopLoss), conversionRate)
+  const suggestedSize = selectedInstrument && selectedAccount && effectiveRiskPercent != null && form.entry_price && stopLoss && Number(stopLoss) && conversionRate > 0
+    ? calculatePositionSize(selectedInstrument, effectiveBalance, effectiveRiskPercent, form.entry_price, Number(stopLoss), conversionRate)
     : null;
 
   useEffect(() => {
@@ -346,11 +352,31 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
   const isEditMode = !!initial;
   const isClosedTrade = form.exit_price != null;
 
-  const canAdvance = (s: number) => {
-    if (s === 0) return true;
-    if (s === 2) return form.pair.trim().length > 0 && form.entry_price != null && form.lot_size != null;
-    if (s === 4) return isClosedTrade;
-    return true;
+  const validateStep = (currentStep: number): string | null => {
+    if (currentStep === 2) {
+      if (!form.pair.trim()) return 'Choose an instrument before continuing.';
+      if (form.entry_price == null || form.entry_price <= 0) return 'Enter a valid entry price before continuing.';
+      if (form.lot_size == null || form.lot_size <= 0) return 'Enter a valid position size before continuing.';
+      if (form.capture_mode === 'live' && !actualFillConfirmed) return 'Confirm the actual broker fill before continuing to Entry Media.';
+      if (form.capture_mode === 'historical' && isExamplePrice && !exampleConfirmed) return 'Confirm the historical entry price before continuing to Entry Media.';
+      if (needsConversion && !(conversionRate > 0)) return `Enter the conversion rate from ${selectedInstrument?.quote_currency} to ${selectedAccount?.base_currency} before continuing.`;
+      return null;
+    }
+    if (currentStep === 4 && !isClosedTrade) return 'Add an exit price before opening the Closure step.';
+    return null;
+  };
+  const navigateToStep = (targetStep: number) => {
+    if (targetStep > step) {
+      for (let currentStep = step; currentStep < targetStep; currentStep += 1) {
+        const validationError = validateStep(currentStep);
+        if (validationError) {
+          setError(validationError);
+          return;
+        }
+      }
+    }
+    setError(null);
+    setStep(targetStep);
   };
 
   const closureStepUnlocked = isClosedTrade;
@@ -389,7 +415,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
             <div key={s.id} className="flex items-center flex-1">
               <button
                 type="button"
-                onClick={() => !locked && canAdvance(i) && setStep(i)}
+                onClick={() => !locked && navigateToStep(i)}
                 className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   locked ? 'text-muted/50 cursor-not-allowed' :
                   active ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400' :
@@ -690,6 +716,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
               <label className={labelCls}>Risk %</label>
               <input type="number" step="0.1" className={inputCls} placeholder="1.0"
                 value={form.risk_percent ?? ''} onChange={e => update('risk_percent', e.target.value ? parseFloat(e.target.value) : null)} />
+              {selectedAccount && selectedPlan?.max_risk_per_trade_pct != null && selectedAccount.risk_per_trade_pct > selectedPlan.max_risk_per_trade_pct && <p className="mt-1 text-[11px] text-amber-600">Plan cap is {selectedPlan.max_risk_per_trade_pct}%; account default is {selectedAccount.risk_per_trade_pct}%. Sizing uses the plan cap.</p>}
             </div>
             <div>
               <label className={labelCls}>Trading account</label>
@@ -697,6 +724,8 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
                 const id = e.target.value || null;
                 const account = accounts.find(a => a.id === id);
                 update('account_id', id);
+                if (account?.broker_name) update('broker', account.broker_name);
+                if (account?.account_type === 'personal' || account?.account_type === 'propfirm') update('account_type', account.account_type);
                 update('conversion_rate', selectedInstrument?.quote_currency === account?.base_currency ? 1 : null);
                 let effectivePlanId = form.plan_id;
                 if (!effectivePlanId && account?.default_plan_id && plans.some(plan => plan.id === account.default_plan_id)) {
@@ -849,7 +878,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
       <div className="flex items-center justify-between pt-3 border-t border-themed">
         <div className="flex items-center gap-2">
           {step > 0 && (
-            <button type="button" onClick={() => setStep(s => s - 1)} className="btn-secondary">
+            <button type="button" onClick={() => navigateToStep(step - 1)} className="btn-secondary">
               <ChevronLeft size={18} /> Back
             </button>
           )}
@@ -859,7 +888,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
             <X size={18} /> Cancel
           </button>
           {step < lastStep ? (
-            <button type="button" onClick={() => canAdvance(step) && setStep(s => s + 1)} disabled={!canAdvance(step)} className="btn-primary">
+            <button type="button" onClick={() => navigateToStep(step + 1)} className="btn-primary">
               Next <ChevronRight size={18} />
             </button>
           ) : (

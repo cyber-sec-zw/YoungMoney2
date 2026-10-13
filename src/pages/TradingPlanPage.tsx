@@ -11,6 +11,7 @@ import { Modal } from '@/components/ui/Modal';
 import type { PreTradeChecklistItem, TradingPlan, TradingPlanInput, TradingRule, TradingRuleInput, RuleCategory } from '@/lib/types';
 import { format } from 'date-fns';
 import { parseISO } from 'date-fns';
+import { DEFAULT_USER_TRADING_PLAN } from '@/data/workspaceDefaults';
 
 const PLAN_SECTIONS: { key: keyof TradingPlanInput; label: string; icon: typeof Target; placeholder: string }[] = [
   { key: 'philosophy', label: 'Trading Philosophy', icon: Target, placeholder: 'Your core trading beliefs and principles...' },
@@ -120,6 +121,12 @@ function PlanCard({ plan, rules, checklist, onAddRule, onUpdateRule, onDeleteRul
           </div>
         ))}
       </div>
+        <div className="mt-4 rounded-xl border border-themed bg-secondary/40 p-3">
+          <p className="text-xs font-semibold text-secondary">Plan risk guardrails</p>
+          <p className="mt-1 text-xs text-muted">
+            Risk / trade: {plan.max_risk_per_trade_pct ?? 'Not set'}% · Daily loss: {plan.max_daily_loss_pct ?? 'Not set'}% · Max drawdown: {plan.max_drawdown_pct ?? 'Not set'}%
+          </p>
+        </div>
       <div className="mt-4 border-t border-themed pt-3">
         <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)} className="flex w-full items-center justify-between text-left text-sm font-semibold"><span className="flex items-center gap-2"><ScrollText size={15} className="text-orange-500" /> Plan rules & checks <span className="text-xs font-normal text-muted">{rules.length} rules · {checklist.length} checks</span></span><ChevronDown size={16} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} /></button>
         {expanded && <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -154,6 +161,9 @@ function PlanForm({ initial, onSave, onCancel }: { initial: TradingPlan | null; 
     Object.fromEntries(PLAN_SECTIONS.map(s => [s.key, (initial?.[s.key] as string) || '']))
   );
   const [adherence, setAdherence] = useState(initial?.adherence_score?.toString() || '');
+  const [maxRisk, setMaxRisk] = useState(initial?.max_risk_per_trade_pct?.toString() || '');
+  const [dailyLoss, setDailyLoss] = useState(initial?.max_daily_loss_pct?.toString() || '');
+  const [maxDrawdown, setMaxDrawdown] = useState(initial?.max_drawdown_pct?.toString() || '');
   const [screenshotUrl, setScreenshotUrl] = useState(initial?.screenshot_url || null);
   const [voiceUrl, setVoiceUrl] = useState(initial?.voice_note_url || null);
   const [saving, setSaving] = useState(false);
@@ -167,6 +177,9 @@ function PlanForm({ initial, onSave, onCancel }: { initial: TradingPlan | null; 
       ltf_execution: sections.ltf_execution || null,
       trade_management: sections.trade_management || null,
       risk_management: sections.risk_management || null,
+      max_risk_per_trade_pct: maxRisk ? Number(maxRisk) : null,
+      max_daily_loss_pct: dailyLoss ? Number(dailyLoss) : null,
+      max_drawdown_pct: maxDrawdown ? Number(maxDrawdown) : null,
       mapping_process: sections.mapping_process || null,
       entry_models: sections.entry_models || null,
       market_conditions: sections.market_conditions || null,
@@ -201,6 +214,27 @@ function PlanForm({ initial, onSave, onCancel }: { initial: TradingPlan | null; 
         </div>
       ))}
 
+      <section className="rounded-xl border border-themed p-4 space-y-3">
+        <h3 className="text-sm font-semibold flex items-center gap-2"><Shield size={15} /> Numeric risk guardrails</h3>
+        <p className="text-xs text-muted">These limits belong to this plan and inform sizing and warnings. Account and prop-firm rules remain separate monitoring references.</p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="text-xs font-medium">Max risk per trade (%)<input type="number" min="0" max="100" step="0.01" className="input-field mt-1" value={maxRisk} onChange={event => setMaxRisk(event.target.value)} placeholder="Optional" /></label>
+          <label className="text-xs font-medium">Daily loss limit (%)<input type="number" min="0" max="100" step="0.01" className="input-field mt-1" value={dailyLoss} onChange={event => setDailyLoss(event.target.value)} placeholder="Optional" /></label>
+          <label className="text-xs font-medium">Max drawdown (%)<input type="number" min="0" max="100" step="0.01" className="input-field mt-1" value={maxDrawdown} onChange={event => setMaxDrawdown(event.target.value)} placeholder="Optional" /></label>
+        </div>
+      </section>
+      {initial && <button type="button" className="btn-secondary w-full" onClick={() => {
+        if (!confirm('Restore the generic default plan text and clear its numeric risk limits? Your saved rules, checklist, attachments, and adherence score will be kept.')) return;
+        setTitle(DEFAULT_USER_TRADING_PLAN.title);
+        const restoredSections: Record<string, string> = {};
+        PLAN_SECTIONS.forEach(section => {
+          const value = DEFAULT_USER_TRADING_PLAN[section.key];
+          restoredSections[section.key] = typeof value === 'string' ? value : '';
+        });
+        setSections(restoredSections);
+        setMaxRisk(''); setDailyLoss(''); setMaxDrawdown('');
+      }}>Restore default plan content</button>}
+
       <div>
         <label className={labelCls}>Adherence Score (%)</label>
         <input type="number" className={inputCls} value={adherence} onChange={e => setAdherence(e.target.value)} placeholder="e.g. 85" />
@@ -217,4 +251,3 @@ function PlanForm({ initial, onSave, onCancel }: { initial: TradingPlan | null; 
     </div>
   );
 }
-

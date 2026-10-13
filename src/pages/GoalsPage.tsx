@@ -9,11 +9,11 @@ import { StatCard } from '@/components/ui/StatCard';
 import type { Goal, GoalInput, GoalCategory, GoalStatus } from '@/lib/types';
 import { format, parseISO, differenceInDays } from 'date-fns';
 
-const CATEGORIES: GoalCategory[] = ['profit', 'win_rate', 'discipline', 'risk', 'growth', 'process', 'personal'];
+const CATEGORIES: GoalCategory[] = ['profit', 'win_rate', 'discipline', 'risk', 'growth', 'process', 'personal', 'general'];
 const STATUSES: GoalStatus[] = ['active', 'completed', 'paused', 'failed'];
 
 const CATEGORY_LABELS: Record<GoalCategory, string> = {
-  profit: 'Profit', win_rate: 'Win Rate', discipline: 'Discipline', risk: 'Risk', growth: 'Growth', process: 'Process', personal: 'Personal',
+  profit: 'Profit', win_rate: 'Win Rate', discipline: 'Discipline', risk: 'Risk', growth: 'Growth', process: 'Process', personal: 'Personal', general: 'General',
 };
 
 const STATUS_CONFIG: Record<GoalStatus, { label: string; icon: typeof Circle; color: string }> = {
@@ -198,7 +198,7 @@ function GoalForm({ initial, onSave, onCancel }: { initial: Goal | null; onSave:
       current_value: currentValue ? parseFloat(currentValue) : null,
       deadline: deadline || null,
       status,
-      goal_type: category === 'personal' ? 'personal' : 'trading',
+      goal_type: category === 'personal' ? 'personal' : category === 'general' ? 'general' : 'trading',
       priority: initial?.priority || 'medium',
       progress_notes: initial?.progress_notes || null,
       year: initial?.year || new Date().getFullYear(),

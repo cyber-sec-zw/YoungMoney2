@@ -153,7 +153,7 @@ export function LandingPage({ onEnter }: { onEnter: () => void }) {
             <div className="p-2 rounded-xl bg-gradient-to-br from-orange-500 to-orange-700 text-white shadow-lg shadow-orange-500/20">
               <TrendingUp size={22} />
             </div>
-            <span className="font-bold text-base tracking-tight">TradeJournal Pro</span>
+            <span className="font-bold text-base tracking-tight">Young-Money-Fx</span>
           </div>
           <div className="hidden md:flex items-center gap-1">
             <a href="#platform" className="btn-ghost text-sm">Platform</a>
@@ -481,7 +481,7 @@ export function LandingPage({ onEnter }: { onEnter: () => void }) {
               <div className="p-1.5 rounded-lg bg-gradient-to-br from-orange-500 to-orange-700 text-white">
                 <TrendingUp size={18} />
               </div>
-              <span className="font-bold text-sm">TradeJournal Pro</span>
+              <span className="font-bold text-sm">YM-Fx</span>
             </div>
             <p className="text-xs text-muted">Built for accountability. Designed for growth.</p>
             <div className="flex items-center gap-3 text-muted">

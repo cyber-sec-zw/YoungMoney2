@@ -204,7 +204,7 @@ export function DataBackupModal({ open, onClose }: DataBackupModalProps) {
     if (!file) return;
     try {
       const parsed: unknown = JSON.parse(await file.text());
-      if (!isBackup(parsed)) throw new Error('This file is not a supported TradeJournal Pro backup.');
+      if (!isBackup(parsed)) throw new Error('This file is not a supported Young-Money-Fx backup.');
       setBackup(parsed);
     } catch (fileError) {
       setError(fileError instanceof Error ? fileError.message : 'Could not read this backup file.');

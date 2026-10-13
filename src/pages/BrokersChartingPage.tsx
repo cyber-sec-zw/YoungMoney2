@@ -1,11 +1,12 @@
-import { useState, useMemo } from 'react';
-import { Building2, Monitor, Plus, Trash2, Save, ExternalLink, CreditCard, Calendar, Wallet } from 'lucide-react';
+import { useState } from 'react';
+import { Building2, Monitor, Plus, Trash2, Save, ExternalLink, Calendar, Wallet } from 'lucide-react';
 import { useBrokers, useChartingTools, useTradingAccounts, useStrategies, useTradingPlans, useTradingAccountAdjustments, useTrades, useProviderCatalog } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { LoadingSpinner, EmptyState } from '@/components/ui/Feedback';
 import { Modal } from '@/components/ui/Modal';
 import { StatCard } from '@/components/ui/StatCard';
+import { PROVIDER_CATALOG_RESEARCH_DATE } from '@/data/providerCatalog';
 import type { Broker, BrokerInput, ChartingTool, ChartingToolInput, TradingAccount, TradingAccountInput, ProviderCatalogEntry, ProviderOffering, PropFirmRuleVersion } from '@/lib/types';
 import { format, parseISO, differenceInDays } from 'date-fns';
 
@@ -79,11 +80,12 @@ export function BrokersChartingPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {accounts.map(account => {
               const broker = brokers.find(b => b.id === account.broker_id);
+              const brokerName = broker?.name || providers.find(p => p.id === account.broker_provider_id)?.name || account.broker_name || 'No broker';
               const closedPnl = trades.filter(t => t.account_id === account.id && t.status === 'closed').reduce((sum, t) => sum + t.pnl, 0);
               const adjustmentTotal = adjustments.filter(a => a.account_id === account.id).reduce((sum, a) => sum + a.amount, 0);
               const currentBalance = account.balance + closedPnl + adjustmentTotal;
               return <div key={account.id} className="card p-4 space-y-3">
-                <div className="flex items-start justify-between gap-3"><div><h3 className="text-sm font-bold">{account.name}</h3><p className="text-xs text-muted mt-1">{broker?.name || 'No broker'} · {account.account_type || 'Account'} · {account.base_currency}</p><p className="text-xs text-secondary mt-2">Current balance <strong className="font-mono">{currentBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {account.base_currency}</strong> · Risk {account.risk_per_trade_pct}% per trade</p>{account.account_type === 'propfirm' && account.challenge_target_pct != null && <p className="text-xs text-muted mt-1">Challenge target {account.challenge_target_pct}% · Daily limit {account.daily_loss_limit_pct ?? '—'}% · Max loss {account.max_loss_limit_pct ?? '—'}%</p>}</div>
+                <div className="flex items-start justify-between gap-3"><div><h3 className="text-sm font-bold">{account.name}</h3><p className="text-xs text-muted mt-1">{brokerName} · {account.account_type || 'Account'} · {account.base_currency}</p><p className="text-xs text-secondary mt-2">Current balance <strong className="font-mono">{currentBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {account.base_currency}</strong> · Risk {account.risk_per_trade_pct}% per trade</p>{account.account_type === 'propfirm' && account.challenge_target_pct != null && <p className="text-xs text-muted mt-1">Challenge target {account.challenge_target_pct}% · Daily limit {account.daily_loss_limit_pct ?? '—'}% · Max loss {account.max_loss_limit_pct ?? '—'}%</p>}</div>
                   <div className="flex gap-1"><button onClick={() => { setEditingAccount(account); setShowAccountForm(true); }} className="btn-ghost p-1.5 text-xs">Edit</button><button onClick={() => { if (confirm('Delete this account? Existing trades will be kept without an account link.')) deleteAccount(account.id); }} className="btn-ghost p-1.5 text-error-500"><Trash2 size={14} /></button></div>
                 </div>
                 <AccountAdjustmentForm accountId={account.id} onAdd={addAdjustment} />
@@ -100,11 +102,11 @@ export function BrokersChartingPage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {providers.filter(p => `${p.name} ${p.provider_kind} ${p.market_group || ''}`.toLowerCase().includes(providerSearch.toLowerCase())).map(provider => {
-            const providerOfferings = offerings.filter(o => o.provider_id === provider.id && o.source_status === 'verified');
+            const providerOfferings = offerings.filter(o => o.provider_id === provider.id);
             return <article key={provider.id} className="card p-4 min-w-0">
               <div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="text-sm font-semibold truncate">{provider.name}</h3><p className="text-[11px] text-muted mt-1">{provider.provider_kind === 'broker' ? 'Broker' : 'Prop firm'} · {provider.market_group?.replace('_', ' ') || 'Trading'}</p></div><a href={provider.website_url} target="_blank" rel="noopener noreferrer" className="btn-ghost p-1.5" aria-label={`Open ${provider.name} official website`}><ExternalLink size={14} /></a></div>
               <div className="mt-3 flex flex-wrap gap-1.5">{(['ZA','ZW'] as const).map(region => <span key={region} className={`badge ${provider.availability?.[region] === 'available' ? 'badge-success' : provider.availability?.[region] === 'unavailable' ? 'badge-error' : 'badge-warning'}`}>{region}: {provider.availability?.[region] || 'unknown'}</span>)}</div>
-              {providerOfferings.length ? <p className="mt-3 text-[11px] text-secondary line-clamp-2">Verified offerings: {providerOfferings.map(o => o.name).join(', ')}</p> : <p className="mt-3 text-[11px] text-muted">Account types or program rules have not yet been verified for your region.</p>}
+              {providerOfferings.length ? <div className="mt-3 space-y-1">{providerOfferings.map(o => <p key={o.id} className="text-[11px] text-secondary"><a className="underline" href={o.source_url || provider.website_url} target="_blank" rel="noopener noreferrer">{o.name}</a> · {o.source_status === 'verified' ? `source checked ${o.verified_at || PROVIDER_CATALOG_RESEARCH_DATE}` : 'details need verification'}</p>)}</div> : <p className="mt-3 text-[11px] text-muted">Official homepage checked {PROVIDER_CATALOG_RESEARCH_DATE}; legal entity, account types, and regional availability still need confirmation.</p>}
             </article>;
           })}
         </div>
@@ -170,7 +172,7 @@ export function BrokersChartingPage() {
         <ToolForm initial={editingTool} onSave={handleToolSave} onCancel={() => { setShowToolForm(false); setEditingTool(null); }} />
       </Modal>
       <Modal open={showAccountForm} onClose={() => { setShowAccountForm(false); setEditingAccount(null); }} title={editingAccount ? 'Edit Trading Account' : 'New Trading Account'} size="md">
-        <TradingAccountForm initial={editingAccount} brokers={brokers} strategies={strategies} plans={plans} providers={providers.filter(p => p.provider_kind === 'prop_firm')} offerings={offerings} ruleVersions={ruleVersions} onSave={handleAccountSave} onCancel={() => { setShowAccountForm(false); setEditingAccount(null); }} />
+        <TradingAccountForm initial={editingAccount} brokers={brokers} strategies={strategies} plans={plans} providers={providers} offerings={offerings} ruleVersions={ruleVersions} onSave={handleAccountSave} onCancel={() => { setShowAccountForm(false); setEditingAccount(null); }} />
       </Modal>
     </div>
   );
@@ -296,15 +298,16 @@ function BrokerForm({ initial, providers, offerings, onSave, onCancel }: { initi
 
 function TradingAccountForm({ initial, brokers, strategies, plans, providers, offerings, ruleVersions, onSave, onCancel }: { initial: TradingAccount | null; brokers: Broker[]; strategies: {id:string;name:string;plan_id?:string|null}[]; plans: {id:string;title:string}[]; providers: ProviderCatalogEntry[]; offerings: ProviderOffering[]; ruleVersions: PropFirmRuleVersion[]; onSave: (data: TradingAccountInput, id?: string) => void; onCancel: () => void }) {
   const [name, setName] = useState(initial?.name || '');
-  const [brokerId, setBrokerId] = useState(initial?.broker_id || '');
+  const [brokerSelection, setBrokerSelection] = useState(initial?.broker_id ? `record:${initial.broker_id}` : initial?.broker_provider_id ? `catalog:${initial.broker_provider_id}` : initial?.broker_name ? 'manual' : '');
+  const [manualBrokerName, setManualBrokerName] = useState(initial?.broker_name || '');
   const [brokerAccountType, setBrokerAccountType] = useState(initial?.broker_account_type || '');
   const [propFirmId, setPropFirmId] = useState(initial?.prop_firm_id || '');
   const [propProgramId, setPropProgramId] = useState(initial?.prop_program_id || '');
   const [propPhase, setPropPhase] = useState(initial?.prop_phase || '');
-  const [providerRegion, setProviderRegion] = useState(initial?.provider_region || 'ZA');
+  const [providerRegion, setProviderRegion] = useState(initial?.provider_region || 'other');
   const [purchaseDate, setPurchaseDate] = useState(String(initial?.prop_rule_snapshot?.purchase_date || ''));
   const [propProgramName, setPropProgramName] = useState(String(initial?.prop_rule_snapshot?.program_name || ''));
-  const [manualRuleSnapshot, setManualRuleSnapshot] = useState<Record<string, unknown>>(initial?.prop_rule_snapshot || {});
+  const [manualRuleSnapshot] = useState<Record<string, unknown>>(initial?.prop_rule_snapshot || {});
   const [accountNumber, setAccountNumber] = useState(initial?.account_number || '');
   const [accountType, setAccountType] = useState(initial?.account_type || 'personal');
   const [currency, setCurrency] = useState(initial?.base_currency || 'USD');
@@ -322,13 +325,16 @@ function TradingAccountForm({ initial, brokers, strategies, plans, providers, of
   const labelCls = 'block text-xs font-semibold text-secondary mb-1.5';
   const propPrograms = offerings.filter(o => o.provider_id === propFirmId && o.offering_kind === 'prop_program');
   const selectedPropRules = ruleVersions.filter(rule => propPrograms.some(offering => offering.id === rule.offering_id) && rule.rule_status === 'verified');
-  const brokerProviderId = brokers.find(b => b.id === brokerId)?.provider_id;
+  const selectedRuleVersion = selectedPropRules.find(rule => rule.phase === propPhase);
+  const selectedCatalogBrokerId = brokerSelection.startsWith('catalog:') ? brokerSelection.slice('catalog:'.length) : '';
+  const selectedBrokerRecordId = brokerSelection.startsWith('record:') ? brokerSelection.slice('record:'.length) : '';
+  const brokerProviderId = selectedCatalogBrokerId || brokers.find(b => b.id === selectedBrokerRecordId)?.provider_id;
   const brokerTypes = offerings.filter(o => o.provider_id === brokerProviderId && o.offering_kind === 'broker_account_type' && o.source_status === 'verified');
   const planStrategies = strategies.filter(s => s.plan_id === defaultPlanId || s.id === initial?.default_strategy_id);
   const handleSave = async () => {
     setSaving(true);
     try {
-      await onSave({ broker_id: brokerId || null, name: name.trim(), account_number: accountNumber || null,
+      await onSave({ broker_id: selectedBrokerRecordId || null, broker_provider_id: selectedCatalogBrokerId || null, broker_name: brokerSelection === 'manual' ? manualBrokerName.trim() || null : providers.find(provider => provider.id === selectedCatalogBrokerId)?.name || null, name: name.trim(), account_number: accountNumber || null,
         account_type: accountType || null, base_currency: currency.trim().toUpperCase(), balance: Number(balance),
         risk_per_trade_pct: Number(risk), is_active: active,
         default_strategy_id: defaultStrategyId || null, default_plan_id: defaultPlanId || null,
@@ -336,9 +342,9 @@ function TradingAccountForm({ initial, brokers, strategies, plans, providers, of
         prop_firm_id: accountType === 'propfirm' ? (propFirmId || null) : null,
         prop_program_id: accountType === 'propfirm' ? (propProgramId || null) : null,
         prop_phase: accountType === 'propfirm' ? (propPhase || null) : null,
-        rule_version_id: selectedPropRules.find(rule => rule.phase === propPhase)?.id || initial?.rule_version_id || null,
+        rule_version_id: selectedRuleVersion?.id || null,
         provider_region: accountType === 'propfirm' ? providerRegion : null,
-        prop_rule_snapshot: accountType === 'propfirm' ? { ...manualRuleSnapshot, program_name: propProgramName, phase: propPhase, provider_region: providerRegion, purchase_date: purchaseDate || null, challenge_target_pct: challengeTarget ? Number(challengeTarget) : null, daily_loss_limit_pct: dailyLimit ? Number(dailyLimit) : null, max_loss_limit_pct: maxLimit ? Number(maxLimit) : null, reset_timezone: resetTimezone } : {},
+        prop_rule_snapshot: accountType === 'propfirm' ? { ...manualRuleSnapshot, program_name: propProgramName, phase: propPhase, provider_region: providerRegion, purchase_date: purchaseDate || null, challenge_target_pct: challengeTarget ? Number(challengeTarget) : null, daily_loss_limit_pct: dailyLimit ? Number(dailyLimit) : null, max_loss_limit_pct: maxLimit ? Number(maxLimit) : null, reset_timezone: resetTimezone, catalog_rule_version_id: selectedRuleVersion?.id || null, catalog_rule_verified_at: selectedRuleVersion?.verified_at || null, catalog_rule_sources: selectedRuleVersion?.source_urls || [], catalog_rule_summary: selectedRuleVersion?.rules || null } : {},
         challenge_target_pct: challengeTarget ? Number(challengeTarget) : null,
         daily_loss_limit_pct: dailyLimit ? Number(dailyLimit) : null,
         max_loss_limit_pct: maxLimit ? Number(maxLimit) : null,
@@ -348,18 +354,21 @@ function TradingAccountForm({ initial, brokers, strategies, plans, providers, of
   return <div className="space-y-4">
     <div><label className={labelCls}>Account name</label><input className={inputCls} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. FTMO 100K challenge" /></div>
     <div className="grid grid-cols-2 gap-3">
-      <div><label className={labelCls}>Broker</label><select className={inputCls} value={brokerId} onChange={e => { setBrokerId(e.target.value); setBrokerAccountType(''); }}><option value="">No broker</option>{brokers.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
+    <div><label className={labelCls}>Broker</label><select className={inputCls} value={brokerSelection} onChange={e => { setBrokerSelection(e.target.value); setBrokerAccountType(''); }}><option value="">No broker</option><optgroup label="Saved brokers">{brokers.map(b => <option key={b.id} value={`record:${b.id}`}>{b.name}</option>)}</optgroup><optgroup label="Preloaded broker directory">{providers.filter(p => p.provider_kind === 'broker').map(p => <option key={p.id} value={`catalog:${p.id}`}>{p.name}</option>)}</optgroup><option value="manual">Enter broker manually</option></select></div>
       <div><label className={labelCls}>Account type</label><select className={inputCls} value={accountType} onChange={e => setAccountType(e.target.value)}><option value="personal">Personal</option><option value="propfirm">Prop firm</option><option value="demo">Demo</option><option value="funded">Funded</option></select></div>
       <div><label className={labelCls}>Base currency</label><input className={inputCls} maxLength={8} value={currency} onChange={e => setCurrency(e.target.value)} placeholder="USD, ZAR, EUR" /></div>
       <div><label className={labelCls}>Account number (optional)</label><input className={inputCls} value={accountNumber} onChange={e => setAccountNumber(e.target.value)} /></div>
       <div><label className={labelCls}>Opening balance</label><input type="number" min="0" className={inputCls} value={balance} onChange={e => setBalance(e.target.value)} /></div>
       <div><label className={labelCls}>Risk per trade (%)</label><input type="number" min="0.01" max="100" step="0.1" className={inputCls} value={risk} onChange={e => setRisk(e.target.value)} /></div>
     </div>
-    {accountType !== 'propfirm' && brokerId && <div><label className={labelCls}>Broker account type</label>{brokerTypes.length ? <select className={inputCls} value={brokerAccountType} onChange={e => setBrokerAccountType(e.target.value)}><option value="">Select verified type</option>{brokerTypes.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}</select> : <input className={inputCls} value={brokerAccountType} onChange={e => setBrokerAccountType(e.target.value)} placeholder="Enter your actual account type" />}</div>}
+    {brokerSelection === 'manual' && <div><label className={labelCls}>Broker name</label><input className={inputCls} value={manualBrokerName} onChange={e => setManualBrokerName(e.target.value)} placeholder="Enter broker name" /></div>}
+    {accountType !== 'propfirm' && brokerSelection && <div><label className={labelCls}>Broker account type</label>{brokerTypes.length ? <select className={inputCls} value={brokerAccountType} onChange={e => setBrokerAccountType(e.target.value)}><option value="">Select verified type</option>{brokerTypes.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}</select> : <input className={inputCls} value={brokerAccountType} onChange={e => setBrokerAccountType(e.target.value)} placeholder="Enter your actual account type" />}<p className="mt-1 text-[11px] text-muted">Broker-specific account types are not confirmed in the catalogue; enter the exact type shown in your broker portal.</p></div>}
     {accountType === 'propfirm' && <div className="rounded-xl border border-themed p-3 space-y-3">
-      <div><label className={labelCls}>Prop firm</label><select className={inputCls} value={propFirmId} onChange={e => { setPropFirmId(e.target.value); setPropProgramId(''); setPropPhase(''); setPropProgramName(''); const firm = providers.find(p => p.id === e.target.value); if (firm && (!name || name === initial?.name)) setName(`${firm.name} account`); }}><option value="">Select firm</option>{providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-      {propPrograms.length ? <div><label className={labelCls}>Program</label><select className={inputCls} value={propProgramId} onChange={e => { setPropProgramId(e.target.value); setPropPhase(''); const selected = propPrograms.find(o => o.id === e.target.value); setPropProgramName(selected?.name || ''); }}><option value="">Select a verified program</option>{propPrograms.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></div> : <div><label className={labelCls}>Program / account type</label><input className={inputCls} value={propProgramName} onChange={e => setPropProgramName(e.target.value)} placeholder="Enter the program from your purchase" /><p className="mt-1 text-[11px] text-muted">No verified program template is available yet; enter your account’s actual rules below.</p></div>}
-      {propProgramId && <div><label className={labelCls}>Phase</label><select className={inputCls} value={propPhase} onChange={e => { setPropPhase(e.target.value); const rule = selectedPropRules.find(v => v.phase === e.target.value); const r = rule?.rules || {}; if (typeof r.profit_target_pct === 'number') setChallengeTarget(String(r.profit_target_pct)); if (typeof r.daily_loss_pct === 'number') setDailyLimit(String(r.daily_loss_pct)); if (typeof r.max_loss_pct === 'number') setMaxLimit(String(r.max_loss_pct)); if (typeof r.reset_timezone === 'string') setResetTimezone(r.reset_timezone); }}><option value="">Select phase</option>{[...new Set(selectedPropRules.map(r => r.phase))].map(phase => <option key={phase} value={phase}>{phase}</option>)}</select><p className="mt-1 text-[11px] text-muted">{selectedPropRules.find(r => r.phase === propPhase) ? `Rule snapshot verified ${selectedPropRules.find(r => r.phase === propPhase)?.verified_at}.` : 'No verified rule snapshot for this phase; use the manual limits below.'}</p></div>}
+      <p className="text-xs text-muted">Directory rule summaries are dated reference material. Confirm the exact program, entity, and region against your account terms.</p>
+      <div><label className={labelCls}>Prop firm</label><select className={inputCls} value={propFirmId} onChange={e => { setPropFirmId(e.target.value); setPropProgramId(''); setPropPhase(''); setPropProgramName(''); const firm = providers.find(p => p.id === e.target.value); if (firm && (!name || name === initial?.name)) setName(`${firm.name} account`); }}><option value="">Select firm</option>{providers.filter(p => p.provider_kind === 'prop_firm').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+      {propPrograms.length ? <div><label className={labelCls}>Program</label><select className={inputCls} value={propProgramId} onChange={e => { setPropProgramId(e.target.value); setPropPhase(''); const selected = propPrograms.find(o => o.id === e.target.value); setPropProgramName(selected?.name || ''); }}><option value="">Select a listed program</option>{propPrograms.map(o => <option key={o.id} value={o.id}>{o.name}{o.source_status !== 'verified' ? ' · needs verification' : ''}</option>)}</select></div> : <div><label className={labelCls}>Program / account type</label><input className={inputCls} value={propProgramName} onChange={e => setPropProgramName(e.target.value)} placeholder="Enter the program from your purchase" /><p className="mt-1 text-[11px] text-muted">No verified program template is available yet; enter the account’s actual rules below.</p></div>}
+      {propProgramId && selectedPropRules.length > 0 && <div><label className={labelCls}>Phase</label><select className={inputCls} value={propPhase} onChange={e => { setPropPhase(e.target.value); const rule = selectedPropRules.find(v => v.phase === e.target.value); const r = rule?.rules || {}; if (typeof r.profit_target_pct === 'number') setChallengeTarget(String(r.profit_target_pct)); if (typeof r.daily_loss_pct === 'number') setDailyLimit(String(r.daily_loss_pct)); if (typeof r.max_loss_pct === 'number') setMaxLimit(String(r.max_loss_pct)); if (typeof r.reset_timezone === 'string') setResetTimezone(r.reset_timezone); }}><option value="">Select phase</option>{[...new Set(selectedPropRules.map(r => r.phase))].map(phase => <option key={phase} value={phase}>{phase}</option>)}</select><p className="mt-1 text-[11px] text-muted">{selectedRuleVersion ? <>Official-source snapshot checked {selectedRuleVersion.verified_at}. <a className="underline" href={selectedRuleVersion.source_urls[0]} target="_blank" rel="noopener noreferrer">View source</a></> : 'No verified rule snapshot for this phase; use the manual limits below.'}</p></div>}
+      {propProgramId && selectedPropRules.length === 0 && <p className="text-[11px] text-amber-600">This directory entry does not have a verified rule version. Confirm your actual account terms and enter the limits manually below.</p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><label className={labelCls}>Availability region</label><select className={inputCls} value={providerRegion} onChange={e => setProviderRegion(e.target.value)}><option value="ZA">South Africa</option><option value="ZW">Zimbabwe</option><option value="other">Other / confirm</option></select></div><div><label className={labelCls}>Purchase date</label><input type="date" className={inputCls} value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} /></div></div>
     </div>}
     <div className="border-t border-themed pt-4 space-y-3">

@@ -33,14 +33,43 @@ import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { reportDataError } from '@/lib/recovery';
 import { RefreshCw } from 'lucide-react';
 
+const PAGE_IDS: PageId[] = [
+  'dashboard', 'trades', 'calendar', 'analytics', 'journal', 'ai', 'leaderboard', 'compare',
+  'trading-plan', 'goals', 'risk-management', 'market-sessions', 'setups', 'strategy-testing',
+  'strategies', 'resources', 'notes', 'study-material', 'brokers-charting', 'weekly-reviews',
+  'account-settings',
+];
+
+function pageFromLocation(): PageId {
+  const candidate = window.location.hash.slice(1);
+  return PAGE_IDS.includes(candidate as PageId) ? candidate as PageId : 'dashboard';
+}
+
 function AppContent() {
   const { session, loading, profile, signOut } = useAuth();
-  const [page, setPage] = useState<PageId>('dashboard');
+  const [page, setPage] = useState<PageId>(pageFromLocation);
   const [quickAdd, setQuickAdd] = useState(false);
   const [showLanding, setShowLanding] = useState(true);
   const [onboardingNeeded, setOnboardingNeeded] = useState<boolean | null>(null);
   const [onboardingError, setOnboardingError] = useState('');
   const [onboardingAttempt, setOnboardingAttempt] = useState(0);
+
+  useEffect(() => {
+    const restorePageFromLocation = () => setPage(pageFromLocation());
+    window.addEventListener('popstate', restorePageFromLocation);
+    window.addEventListener('hashchange', restorePageFromLocation);
+    return () => {
+      window.removeEventListener('popstate', restorePageFromLocation);
+      window.removeEventListener('hashchange', restorePageFromLocation);
+    };
+  }, []);
+
+  const navigateToPage = (nextPage: PageId) => {
+    if (nextPage !== page) {
+      window.history.pushState({}, '', `#${nextPage}`);
+      setPage(nextPage);
+    }
+  };
 
   useEffect(() => {
     if (!session?.user) {
@@ -75,7 +104,7 @@ function AppContent() {
     );
   }
 
-  if (showLanding) {
+  if (showLanding && !session) {
     return <LandingPage onEnter={() => setShowLanding(false)} />;
   }
 
@@ -104,7 +133,7 @@ function AppContent() {
   }
 
   return (
-    <Layout current={page} onNavigate={setPage} onQuickAdd={() => setQuickAdd(true)}>
+    <Layout current={page} onNavigate={navigateToPage} onQuickAdd={() => setQuickAdd(true)}>
       <div key={page} className="animate-fade-in">
         {page === 'dashboard' && <DashboardPage />}
         {page === 'trades' && <TradesPage />}

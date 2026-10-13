@@ -16,7 +16,7 @@ import { MoodTracker } from '@/components/MoodTracker';
 import { StrategyEdgeScore } from '@/components/StrategyEdgeScore';
 import { RiskGuardian } from '@/components/RiskGuardian';
 import { RiskSettingsModal } from '@/components/RiskSettingsModal';
-import { useRiskSettings, useChecklist } from '@/hooks/useData';
+import { useRiskSettings, useChecklist, useTradingPlans } from '@/hooks/useData';
 import type { Trade, TradeInput, RiskSettingsInput } from '@/lib/types';
 import { subDays, format } from 'date-fns';
 
@@ -30,6 +30,7 @@ export function DashboardPage() {
   const { sessions } = useTestSessions(user?.id);
   const { trades: loggedTestTrades } = useAllTestTrades(user?.id);
   const { settings, saveSettings } = useRiskSettings(user?.id);
+  const { plans } = useTradingPlans(user?.id);
   const { checklist, addChecklistItem, deleteChecklistItem } = useChecklist(user?.id);
   const [showAdd, setShowAdd] = useState(false);
   const [showRiskSettings, setShowRiskSettings] = useState(false);
@@ -37,6 +38,7 @@ export function DashboardPage() {
   const [source, setSource] = useState<'live' | 'backtest' | 'forward'>('live');
 
   const account = accounts.find(a => a.id === accountFilter) || null;
+  const accountPlan = plans.find(plan => plan.id === account?.default_plan_id) || null;
   const sessionSourceTrades = useMemo(() => loggedTestTrades.flatMap(test => {
     const session = sessions.find(s => s.id === test.session_id);
     if (!session || (source === 'backtest' ? session.test_type !== 'backtest' : session.test_type !== 'forward_test')) return [];
@@ -146,6 +148,14 @@ export function DashboardPage() {
         {(account.daily_loss_limit_pct != null && accountTodayPnl <= -(account.balance * account.daily_loss_limit_pct / 100) || account.max_loss_limit_pct != null && accountPnl <= -(account.balance * account.max_loss_limit_pct / 100)) && <p role="alert" className="text-xs font-semibold text-error-500">One of this account’s configured loss limits has been reached or exceeded.</p>}
       </div>}
 
+      {source === 'live' && account && accountPlan && <div className="card p-4 mb-6 space-y-1">
+        <p className="text-sm font-semibold">Plan guardrails · {accountPlan.title}</p>
+        <p className="text-xs text-secondary">
+          Default plan limits: {accountPlan.max_risk_per_trade_pct ?? 'not set'}% risk / trade · {accountPlan.max_daily_loss_pct ?? 'not set'}% daily loss · {accountPlan.max_drawdown_pct ?? 'not set'}% max drawdown. Account and prop-firm limits are separate.
+        </p>
+        {accountPlan.max_daily_loss_pct != null && accountTodayPnl <= -(account.balance * accountPlan.max_daily_loss_pct / 100) && <p role="alert" className="text-xs font-semibold text-error-500">The default plan’s daily loss limit has been reached or exceeded.</p>}
+      </div>}
+
       {mixedCurrencyView && <div className="card px-4 py-3 mb-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs"><span className="font-semibold text-secondary">Closed P&amp;L by currency</span>{currencyTotals.length ? currencyTotals.map(([currency, pnl]) => <strong key={currency} className={`font-mono ${pnl >= 0 ? 'text-success-500' : 'text-error-500'}`}>{currency} {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}</strong>) : <span className="text-muted">No closed trades in this view.</span>}</div>}
 
       {/* Stat cards */}
@@ -174,9 +184,9 @@ export function DashboardPage() {
         />
         <StatCard
           label="Profit Factor"
-          value={mixedCurrencyView ? 'Per currency' : stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2)}
+          value={mixedCurrencyView ? 'Select account' : stats.profitFactor === Infinity ? '∞' : stats.profitFactor.toFixed(2)}
           icon={<Activity size={20} className="text-orange-500" />}
-          sublabel={mixedCurrencyView ? 'P&L metrics remain account specific' : `Expectancy: ${formatCurrency(stats.expectancy)}`}
+          sublabel={mixedCurrencyView ? 'Profit factor is not combined across currencies' : `Expectancy: ${formatCurrency(stats.expectancy)}`}
           accent="blue"
         />
       </div>
@@ -236,7 +246,7 @@ export function DashboardPage() {
                 <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => `$${v}`} />
                 <Tooltip
                   contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 12 }}
-                  formatter={(v: any) => [formatCurrency(Number(v)), 'Equity']}
+                  formatter={(v) => [formatCurrency(Number(v)), 'Equity']}
                 />
                 <Area type="monotone" dataKey="equity" stroke="var(--brand)" strokeWidth={2} fill="url(#equityGrad)" />
               </AreaChart>
@@ -255,7 +265,7 @@ export function DashboardPage() {
                 <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={50} tickFormatter={(v) => `$${v}`} />
                 <Tooltip
                   contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, fontSize: 12 }}
-                  formatter={(v: any, _name: any, p: any) => [formatCurrency(Number(v)), `P&L (${(p.payload as any).trades} trades)`]}
+                  formatter={(v, _name, p) => [formatCurrency(Number(v)), `P&L (${p.payload.trades} trades)`]}
                 />
                 <Bar dataKey="pnl" radius={[6, 6, 0, 0]}>
                   {last7Days.map((d, i) => (

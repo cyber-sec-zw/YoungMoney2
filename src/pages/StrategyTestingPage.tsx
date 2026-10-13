@@ -253,7 +253,7 @@ function SessionCard({ session, expanded, onToggle, onEdit, onDelete, userId }: 
 
       {showTradeForm && (
         <Modal open={showTradeForm} onClose={() => setShowTradeForm(false)} title="Add Test Trade" size="md">
-          <TradeForm sessionId={session.id} accountId={session.account_id || null} instrumentId={session.instrument_id || null} setupId={session.setup_id || null} entryModelId={session.entry_model_id || null} planId={session.plan_id || null} checklistItems={applicableChecklistItems} instrument={selectedInstrument} account={selectedAccount} onAdd={addTrade} onClose={() => setShowTradeForm(false)} />
+          <TradeForm sessionId={session.id} accountId={session.account_id || null} instrumentId={session.instrument_id || null} setupId={session.setup_id || null} strategyId={session.strategy_id || null} entryModelId={session.entry_model_id || null} entryModelMode={session.entry_model_mode || (session.entry_model_id ? 'one' : 'unspecified')} planId={session.plan_id || null} checklistItems={applicableChecklistItems} instrument={selectedInstrument} account={selectedAccount} onAdd={addTrade} onClose={() => setShowTradeForm(false)} />
         </Modal>
       )}
     </div>
@@ -283,6 +283,7 @@ function SessionForm({ initial, onSave, onCancel }: { initial: StrategyTestSessi
   const [testType, setTestType] = useState<'backtest' | 'forward_test'>(initial?.test_type || 'backtest');
   const [strategyId, setStrategyId] = useState(initial?.strategy_id || '');
   const [entryModelId, setEntryModelId] = useState(initial?.entry_model_id || '');
+  const [entryModelMode, setEntryModelMode] = useState<'one' | 'all' | 'unspecified'>(initial?.entry_model_mode || (initial?.entry_model_id ? 'one' : 'unspecified'));
   const [planId, setPlanId] = useState(initial?.plan_id || '');
   const [accountId, setAccountId] = useState(initial?.account_id || '');
   const [instrumentId, setInstrumentId] = useState(initial?.instrument_id || '');
@@ -302,7 +303,8 @@ function SessionForm({ initial, onSave, onCancel }: { initial: StrategyTestSessi
       name,
       strategy_name: strategyName || null,
       strategy_id: strategyId || null,
-      entry_model_id: entryModelId || null,
+      entry_model_id: entryModelMode === 'one' ? entryModelId || null : null,
+      entry_model_mode: entryModelMode,
       plan_id: planId || null,
       account_id: accountId || null,
       instrument_id: instrumentId || null,
@@ -342,7 +344,21 @@ function SessionForm({ initial, onSave, onCancel }: { initial: StrategyTestSessi
           <select className={inputCls} value={strategyId} onChange={e => { setStrategyId(e.target.value); setEntryModelId(''); setStrategyName(strategies.find(s => s.id === e.target.value)?.name || ''); }}><option value="">Select strategy</option>{strategies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
         </div>
       </div>
-      {entryModels.length > 0 && <div><label className={labelCls}>Entry model (optional)</label><select className={inputCls} value={entryModelId} onChange={e => setEntryModelId(e.target.value)}><option value="">General checklist</option>{entryModels.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}</select></div>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="text-xs font-semibold text-secondary">Entry model scope
+          <select className={`${inputCls} mt-1.5`} value={entryModelMode} onChange={e => { const next = e.target.value as 'one' | 'all' | 'unspecified'; setEntryModelMode(next); if (next !== 'one') setEntryModelId(''); }}>
+            <option value="one">Use one model for this session</option>
+            <option value="all">Use all models; choose per trade</option>
+            <option value="unspecified">Not specified; choose during capture</option>
+          </select>
+        </label>
+        {entryModelMode === 'one' && <label className="text-xs font-semibold text-secondary">Session entry model
+          <select className={`${inputCls} mt-1.5`} value={entryModelId} onChange={e => setEntryModelId(e.target.value)}><option value="">Choose later during trade capture</option>{entryModels.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}</select>
+        </label>}
+      </div>
+      <details className="rounded-xl border border-themed p-3">
+        <summary className="cursor-pointer text-sm font-semibold">Optional session context <span className="text-xs font-normal text-muted">· instrument, account, setup, timeframe, dates, and balance</span></summary>
+        <div className="mt-4 space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className={labelCls}>Instrument</label>
@@ -375,6 +391,8 @@ function SessionForm({ initial, onSave, onCancel }: { initial: StrategyTestSessi
         <label className={labelCls}>Notes</label>
         <textarea className={inputCls} rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Session notes..." />
       </div>
+        </div>
+      </details>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label className={labelCls}>Session Chart Image</label><ScreenshotUpload onUpload={setScreenshotUrl} existingUrl={screenshotUrl} label="Upload session summary chart" /></div><div><label className={labelCls}>Voice Note</label><VoiceRecorder onUpload={setVoiceUrl} existingUrl={voiceUrl} /></div></div>
       <div className="flex gap-3 pt-2">
         <button onClick={handleSave} disabled={saving || !name} className="btn-primary flex-1">
@@ -386,7 +404,10 @@ function SessionForm({ initial, onSave, onCancel }: { initial: StrategyTestSessi
   );
 }
 
-function TradeForm({ sessionId, accountId, instrumentId, setupId, entryModelId, planId, checklistItems, instrument, account, onAdd, onClose }: { sessionId: string; accountId: string | null; instrumentId: string | null; setupId: string | null; entryModelId: string | null; planId: string | null; checklistItems: { id: string; label: string; is_required: boolean; source_scope: 'plan' | 'strategy' | 'entry_model' }[]; instrument: import('@/lib/types').MarketInstrument | null; account: import('@/lib/types').TradingAccount | null; onAdd: (t: StrategyTestTradeInput) => Promise<void>; onClose: () => void }) {
+function TradeForm({ sessionId, accountId, instrumentId, setupId, strategyId, entryModelId, entryModelMode, planId, checklistItems, instrument, account, onAdd, onClose }: { sessionId: string; accountId: string | null; instrumentId: string | null; setupId: string | null; strategyId: string | null; entryModelId: string | null; entryModelMode: 'one' | 'all' | 'unspecified'; planId: string | null; checklistItems: { id: string; label: string; is_required: boolean; source_scope: 'plan' | 'strategy' | 'entry_model' }[]; instrument: import('@/lib/types').MarketInstrument | null; account: import('@/lib/types').TradingAccount | null; onAdd: (t: StrategyTestTradeInput) => Promise<void>; onClose: () => void }) {
+  const { models: entryModels } = useStrategyEntryModels(strategyId);
+  const [selectedEntryModelId, setSelectedEntryModelId] = useState(entryModelId || '');
+  const { items: selectedModelChecks } = useStrategyChecklist(strategyId, selectedEntryModelId || null);
   const [direction, setDirection] = useState<'long' | 'short'>('long');
   const [entryPrice, setEntryPrice] = useState('');
   const [exitPrice, setExitPrice] = useState('');
@@ -427,7 +448,11 @@ function TradeForm({ sessionId, accountId, instrumentId, setupId, entryModelId, 
   const calculatedR = riskAmount ? calculatedPnl / riskAmount : (Number(rMultiple) || null);
   const autoOutcome: TestTradeOutcome = calculatedPnl > 0 ? 'win' : calculatedPnl < 0 ? 'loss' : 'breakeven';
   const usesExample = examplePriceIsUnconfirmed(Number(entryPrice) || null, instrument);
-  const checklistSnapshot = checklistItems.map(item => ({ id: item.id, label: item.label, checked: checkedItems.includes(item.id), is_required: item.is_required, source_scope: item.source_scope }));
+  const tradeChecklist = [
+    ...checklistItems.filter(item => item.source_scope !== 'entry_model'),
+    ...selectedModelChecks.map(item => ({ ...item, source_scope: 'entry_model' as const })),
+  ];
+  const checklistSnapshot = tradeChecklist.map(item => ({ id: item.id, label: item.label, checked: checkedItems.includes(item.id), is_required: item.is_required, source_scope: item.source_scope }));
   const setupQuality = setupQualityFromChecklist(checklistSnapshot);
 
   const handleSave = async () => {
@@ -452,7 +477,7 @@ function TradeForm({ sessionId, accountId, instrumentId, setupId, entryModelId, 
       account_id: accountId,
       instrument_id: instrumentId,
       setup_id: setupId,
-      entry_model_id: entryModelId,
+      entry_model_id: entryModelMode === 'one' && entryModelId ? entryModelId : selectedEntryModelId || null,
       plan_id: planId,
       checklist_items: checklistSnapshot,
       setup_quality: setupQuality,
@@ -468,6 +493,7 @@ function TradeForm({ sessionId, accountId, instrumentId, setupId, entryModelId, 
 
   return (
     <div className="space-y-4">
+      {(entryModelMode !== 'one' || !entryModelId) && <label className={labelCls}>Entry model for this trade {entryModelMode === 'unspecified' ? '(optional)' : ''}<select className={`${inputCls} mt-1.5`} value={selectedEntryModelId} onChange={e => setSelectedEntryModelId(e.target.value)}><option value="">No model selected</option>{entryModels.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label>}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className={labelCls}>Direction</label>
@@ -526,7 +552,7 @@ function TradeForm({ sessionId, accountId, instrumentId, setupId, entryModelId, 
         {usesExample && <label className="flex items-center gap-2 rounded-lg bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-300"><input type="checkbox" checked={exampleConfirmed} onChange={e => setExampleConfirmed(e.target.checked)} /> I reviewed this example price and it is my actual entry.</label>}
         {instrument.quote_currency !== account?.base_currency && <div><label className={labelCls}>Conversion {instrument.quote_currency} → {account?.base_currency || 'account currency'}</label><input type="number" min="0" step="0.000001" className={inputCls} value={conversionRate} onChange={e => setConversionRate(e.target.value)} placeholder="Enter manual rate" /></div>}
       </>}
-      {checklistItems.length > 0 && <div className="rounded-lg border border-themed p-3"><p className="text-xs font-semibold mb-2">Plan & entry checklist · {checklistItems.length} items</p><div className="space-y-2">{checklistItems.map(item => <label key={item.id} className="flex items-start gap-2 text-xs text-secondary"><input type="checkbox" checked={checkedItems.includes(item.id)} onChange={e => setCheckedItems(current => e.target.checked ? [...current, item.id] : current.filter(id => id !== item.id))} /><span>{item.label}{item.is_required && <span className="ml-1 text-muted">· required</span>}</span></label>)}</div><p className="mt-2 text-xs text-secondary">Checklist score: {setupQuality == null ? '—' : `${setupQuality}/5`}</p>{checklistSnapshot.some(item => item.is_required && !item.checked) && <p className="mt-1 text-[11px] text-amber-600">Required checks remain incomplete.</p>}</div>}
+      {tradeChecklist.length > 0 && <div className="rounded-lg border border-themed p-3"><p className="text-xs font-semibold mb-2">Plan & entry checklist · {tradeChecklist.length} items</p><div className="space-y-2">{tradeChecklist.map(item => <label key={item.id} className="flex items-start gap-2 text-xs text-secondary"><input type="checkbox" checked={checkedItems.includes(item.id)} onChange={e => setCheckedItems(current => e.target.checked ? [...current, item.id] : current.filter(id => id !== item.id))} /><span>{item.label}{item.is_required && <span className="ml-1 text-muted">· required</span>}</span></label>)}</div><p className="mt-2 text-xs text-secondary">Checklist score: {setupQuality == null ? '—' : `${setupQuality}/5`}</p>{checklistSnapshot.some(item => item.is_required && !item.checked) && <p className="mt-1 text-[11px] text-amber-600">Required checks remain incomplete.</p>}</div>}
       <div>
         <label className={labelCls}>Notes</label>
         <textarea className={inputCls} rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Trade notes..." />

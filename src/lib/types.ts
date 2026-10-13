@@ -244,6 +244,9 @@ export interface TradingPlan {
   ltf_execution: string | null;
   trade_management: string | null;
   risk_management: string | null;
+  max_risk_per_trade_pct?: number | null;
+  max_daily_loss_pct?: number | null;
+  max_drawdown_pct?: number | null;
   mapping_process: string | null;
   entry_models: string | null;
   market_conditions: string | null;
@@ -258,7 +261,7 @@ export interface TradingPlan {
 export type TradingPlanInput = Omit<TradingPlan, 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 
 // ── Goals ──
-export type GoalCategory = 'profit' | 'win_rate' | 'discipline' | 'risk' | 'growth' | 'process' | 'personal';
+export type GoalCategory = 'profit' | 'win_rate' | 'discipline' | 'risk' | 'growth' | 'process' | 'personal' | 'general';
 export type GoalStatus = 'active' | 'completed' | 'paused' | 'failed';
 
 export interface Goal {
@@ -442,6 +445,7 @@ export interface StrategyTestSession {
   strategy_id: string | null;
   plan_id?: string | null;
   entry_model_id?: string | null;
+  entry_model_mode?: 'one' | 'all' | 'unspecified';
   account_id?: string | null;
   instrument_id?: string | null;
   setup_id?: string | null;
@@ -590,6 +594,8 @@ export interface TradingAccount {
   id: string;
   user_id: string;
   broker_id: string | null;
+  broker_provider_id?: string | null;
+  broker_name?: string | null;
   name: string;
   account_number: string | null;
   account_type: string | null;
@@ -728,7 +734,7 @@ export interface WeeklyReview {
 export type WeeklyReviewInput = Omit<WeeklyReview, 'id' | 'user_id' | 'created_at' | 'updated_at'>;
 
 // ── Goal Templates ──
-export type GoalType = 'trading' | 'personal';
+export type GoalType = 'trading' | 'personal' | 'general';
 export type GoalPriority = 'high' | 'medium' | 'low';
 
 export interface GoalTemplate {

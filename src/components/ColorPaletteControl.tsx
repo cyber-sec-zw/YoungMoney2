@@ -1,18 +1,42 @@
+import { useEffect, useRef } from 'react';
 import { Moon, Palette, Sun } from 'lucide-react';
-import { COLOR_PALETTES, useTheme, type ColorPalette } from '@/context/ThemeContext';
+import { COLOR_PALETTES, useTheme } from '@/context/ThemeContext';
 
 /** A shared palette picker used on the welcome page and inside the workspace. */
 export function ColorPaletteControl({ compact = false }: { compact?: boolean }) {
   const { theme, palette, toggle, setPalette } = useTheme();
+  const controlRef = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    const closeOnOutsideInteraction = (event: PointerEvent) => {
+      if (event.target instanceof Node && !controlRef.current?.contains(event.target)) {
+        if (controlRef.current) controlRef.current.open = false;
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && controlRef.current?.open) {
+        controlRef.current.open = false;
+      }
+    };
+    document.addEventListener('pointerdown', closeOnOutsideInteraction);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsideInteraction);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, []);
 
   return (
-    <details className="palette-control relative">
+    <details ref={controlRef} className="palette-control relative">
       <summary className={`btn-secondary cursor-pointer list-none ${compact ? 'px-3 py-2 text-xs' : 'w-full justify-between'}`} aria-label="Appearance settings">
         <span className="inline-flex items-center gap-2"><Palette size={compact ? 15 : 16} />{compact ? <span className="hidden sm:inline">Appearance</span> : 'Appearance'}</span>
         {compact && <span className="h-3 w-3 rounded-full ring-1 ring-black/10" style={{ background: COLOR_PALETTES.find(item => item.id === palette)?.swatch }} />}
       </summary>
       <div className={`${compact ? 'right-0 top-full mt-2' : 'bottom-full left-0 right-0 mb-2'} absolute z-[70] w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-themed bg-card p-3 shadow-2xl`}>
-        <button type="button" onClick={toggle} className="mb-2 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-secondary">
+        <button type="button" onClick={() => {
+          toggle();
+          if (controlRef.current) controlRef.current.open = false;
+        }} className="mb-2 flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-secondary">
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           Switch to {theme === 'dark' ? 'light' : 'dark'} mode
         </button>
@@ -22,7 +46,10 @@ export function ColorPaletteControl({ compact = false }: { compact?: boolean }) 
             key={option.id}
             type="button"
             aria-pressed={palette === option.id}
-            onClick={() => setPalette(option.id as ColorPalette)}
+            onClick={() => {
+              setPalette(option.id);
+              if (controlRef.current) controlRef.current.open = false;
+            }}
             className={`flex items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors ${palette === option.id ? 'bg-secondary' : 'hover:bg-secondary'}`}
           >
             <span aria-hidden="true" className="h-4 w-4 shrink-0 rounded-full ring-1 ring-black/10" style={{ background: option.swatch }} />

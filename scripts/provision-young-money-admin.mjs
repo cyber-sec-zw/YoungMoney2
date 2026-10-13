@@ -10,7 +10,7 @@
  *
  * Do not put any of these values in source control, browser configuration, or
  * deployment logs. This command confirms the email and creates the private
- * Young_Money 1.0 playbook for the account.
+ * Young-Money-Fx playbook for the account.
  */
 import { createClient } from '@supabase/supabase-js';
 import { readFile } from 'node:fs/promises';
@@ -27,17 +27,17 @@ async function envFromDotFile() {
   } catch { return {}; }
 }
 
-async function loadPhotonSeed() {
-  const path = resolve('src/data/photonPlanTemplate.ts');
+async function loadYmFxSeed() {
+  const path = resolve('src/data/ymFxPlanTemplate.ts');
   let source = await readFile(path, 'utf8');
   source = source
     .replace(/^import[^;]+;\s*/m, '')
     .replace(/export interface[\s\S]*?}\s*/m, '')
     .replace(/export const /g, 'const ')
     .replace(/: TradingPlanInput/g, '')
-    .replace(/: PhotonEntryModelTemplate\[\]/g, '')
+    .replace(/: YmFxEntryModelTemplate\[\]/g, '')
     .replace(/ as const/g, '');
-  source += '\nmodule.exports = { PHOTON_PLAN, PHOTON_PLAN_RULES, PHOTON_PLAN_CHECKS, PHOTON_ENTRY_MODELS };';
+  source += '\nmodule.exports = { YM_FX_PLAN, YM_FX_PLAN_RULES, YM_FX_PLAN_CHECKS, YM_FX_ENTRY_MODELS };';
   const context = { module: { exports: {} } };
   vm.runInNewContext(source, context, { filename: path });
   return context.module.exports;
@@ -72,27 +72,27 @@ const { error: profileError } = await supabase.from('profiles').upsert({
 }, { onConflict: 'id' });
 if (profileError) throw profileError;
 
-const { data: existingPlan, error: planReadError } = await supabase.from('trading_plans').select('id').eq('user_id', userId).eq('title', 'Young_Money 1.0').maybeSingle();
+const { data: existingPlan, error: planReadError } = await supabase.from('trading_plans').select('id').eq('user_id', userId).eq('title', 'Young-Money-Fx').maybeSingle();
 if (planReadError) throw planReadError;
 if (!existingPlan) {
-  const { PHOTON_PLAN, PHOTON_PLAN_RULES, PHOTON_PLAN_CHECKS, PHOTON_ENTRY_MODELS } = await loadPhotonSeed();
-  const { data: plan, error: planError } = await supabase.from('trading_plans').insert({ ...PHOTON_PLAN, title: 'Young_Money 1.0', user_id: userId }).select('id').single();
+  const { YM_FX_PLAN, YM_FX_PLAN_RULES, YM_FX_PLAN_CHECKS, YM_FX_ENTRY_MODELS } = await loadYmFxSeed();
+  const { data: plan, error: planError } = await supabase.from('trading_plans').insert({ ...YM_FX_PLAN, title: 'Young-Money-Fx', user_id: userId }).select('id').single();
   if (planError) throw planError;
-  const { data: strategy, error: strategyError } = await supabase.from('trader_strategies').insert({ user_id: userId, plan_id: plan.id, name: 'Young_Money 1.0', description: 'Private editable Photon-derived strategy playbook.', is_active: true }).select('id').single();
+  const { data: strategy, error: strategyError } = await supabase.from('trader_strategies').insert({ user_id: userId, plan_id: plan.id, name: 'Young-Money-Fx', description: 'Private editable YM-Fx strategy playbook.', is_active: true }).select('id').single();
   if (strategyError) throw strategyError;
-  for (const [modelIndex, modelTemplate] of PHOTON_ENTRY_MODELS.entries()) {
+  for (const [modelIndex, modelTemplate] of YM_FX_ENTRY_MODELS.entries()) {
     const { data: model, error: modelError } = await supabase.from('strategy_entry_models').insert({ user_id: userId, strategy_id: strategy.id, name: modelTemplate.name, description: modelTemplate.description, is_active: true }).select('id').single();
     if (modelError) throw modelError;
     const { error: checksError } = await supabase.from('strategy_checklist_items').insert(modelTemplate.checklist.map((item, index) => ({ strategy_id: strategy.id, entry_model_id: model.id, label: item.label, is_required: item.is_required, sort_order: index, is_active: true })));
     if (checksError) throw checksError;
-    console.log(`Seeded model ${modelIndex + 1}/${PHOTON_ENTRY_MODELS.length}`);
+    console.log(`Seeded model ${modelIndex + 1}/${YM_FX_ENTRY_MODELS.length}`);
   }
-  const { error: rulesError } = await supabase.from('trading_rules').insert(PHOTON_PLAN_RULES.map((rule, index) => ({ user_id: userId, plan_id: plan.id, rule_text: rule.rule_text, category: rule.category, priority: index + 1, is_active: true, times_broken: 0 })));
+  const { error: rulesError } = await supabase.from('trading_rules').insert(YM_FX_PLAN_RULES.map((rule, index) => ({ user_id: userId, plan_id: plan.id, rule_text: rule.rule_text, category: rule.category, priority: index + 1, is_active: true, times_broken: 0 })));
   if (rulesError) throw rulesError;
-  const { error: planChecksError } = await supabase.from('pre_trade_checklist').insert(PHOTON_PLAN_CHECKS.map((label, index) => ({ user_id: userId, plan_id: plan.id, label, is_required: true, sort_order: index, is_active: true })));
+  const { error: planChecksError } = await supabase.from('pre_trade_checklist').insert(YM_FX_PLAN_CHECKS.map((label, index) => ({ user_id: userId, plan_id: plan.id, label, is_required: true, sort_order: index, is_active: true })));
   if (planChecksError) throw planChecksError;
 }
 
-const { error: auditError } = await supabase.from('admin_audit_log').insert({ actor_user_id: userId, target_user_id: userId, action: 'provision', outcome: 'success', metadata: { username: 'young_money', playbook: 'Young_Money 1.0' } });
+const { error: auditError } = await supabase.from('admin_audit_log').insert({ actor_user_id: userId, target_user_id: userId, action: 'provision', outcome: 'success', metadata: { username: 'young_money', playbook: 'Young-Money-Fx' } });
 if (auditError) throw auditError;
 console.log('Administrator provisioned and private playbook is ready.');
