@@ -1,6 +1,6 @@
 # Cloudflare pilot operations
 
-This $0 pilot runs as one Cloudflare Worker serving the Vite app and API, with D1 for account and journal records. The `supabase` module in the client is a compatibility adapter to this Worker; this deployment does not use a Supabase project. R2 is intentionally not enabled: file attachments are unavailable, while text-based journal capture remains available.
+This $0 pilot runs as one Cloudflare Worker (`ym-fx`) serving the Vite app and API, with D1 (`trade-journal-pro`) for account and journal records. The default site URL is `https://ym-fx.ethical-hacker263.workers.dev`; a custom domain can be configured in Cloudflare after adding a domain you own. The `supabase` module in the client is a compatibility adapter to this Worker; this deployment does not use a Supabase project. R2 is intentionally not enabled: file attachments are unavailable, while text-based journal capture remains available.
 
 ## One-time setup
 

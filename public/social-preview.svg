@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#111f32"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#38d39f" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#38d39f" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="1030" cy="30" r="360" fill="url(#glow)"/>
+  <path d="M0 520C220 490 360 555 565 505s390-185 635-130v255H0Z" fill="#0a1727" opacity=".72"/>
+  <g font-family="Inter,Segoe UI,Arial,sans-serif">
+    <rect x="82" y="76" width="56" height="56" rx="16" fill="#38d39f"/>
+    <path d="M96 112V92h5l9 12 9-12h5v20h-6v-11l-8 10-8-10v11h-6Z" fill="#0b1220"/>
+    <text x="158" y="113" fill="#c7d2df" font-size="22" font-weight="600" letter-spacing="2">YM-FX JOURNAL</text>
+    <text x="82" y="250" fill="#f5f8fc" font-size="68" font-weight="700">Trade with</text>
+    <text x="82" y="330" fill="#38d39f" font-size="68" font-weight="700">clarity.</text>
+    <text x="86" y="390" fill="#a9b8c9" font-size="25">A focused home for your accounts, strategies,</text>
+    <text x="86" y="428" fill="#a9b8c9" font-size="25">trading plans, and performance.</text>
+    <rect x="86" y="482" width="197" height="48" rx="24" fill="#16283a"/>
+    <circle cx="111" cy="506" r="6" fill="#38d39f"/>
+    <text x="130" y="513" fill="#dce6f1" font-size="18" font-weight="600">Your trading journal</text>
+    <rect x="718" y="131" width="402" height="350" rx="24" fill="#111f30" stroke="#2b3d50" stroke-width="2"/>
+    <text x="754" y="179" fill="#e8eef5" font-size="19" font-weight="600">Performance overview</text>
+    <text x="754" y="222" fill="#8fa3b8" font-size="14">ACCOUNT BALANCE</text>
+    <text x="754" y="261" fill="#f5f8fc" font-size="34" font-weight="700">$24,680</text>
+    <text x="954" y="254" fill="#38d39f" font-size="15" font-weight="600">+8.4%</text>
+    <path d="M754 395 790 374 824 386 861 336 899 350 936 301 970 317 1009 272 1048 286 1083 237" fill="none" stroke="#38d39f" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M754 395 790 374 824 386 861 336 899 350 936 301 970 317 1009 272 1048 286 1083 237V417H754Z" fill="#38d39f" opacity=".08"/>
+    <path d="M754 417H1084" stroke="#33465a" stroke-width="2"/>
+    <text x="754" y="452" fill="#8fa3b8" font-size="14">A clearer view of every trade.</text>
+  </g>
+</svg>

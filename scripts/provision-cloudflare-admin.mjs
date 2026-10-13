@@ -106,7 +106,7 @@ try {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (result.status !== 0) throw new Error(`D1 provisioning failed: ${(result.stderr || result.stdout).trim()}`);
-  const verify = await fetch('https://trade-journal-pro.ethical-hacker263.workers.dev/api/auth/signin', {
+  const verify = await fetch('https://ym-fx.ethical-hacker263.workers.dev/api/auth/signin', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, password }),
