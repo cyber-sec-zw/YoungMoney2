@@ -119,7 +119,7 @@ export function VoiceRecorder({ onUpload, existingUrl }: VoiceRecorderProps) {
         <button
           type="button"
           onClick={togglePlay}
-          className="p-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors"
+          className="bg-brand-control p-2 rounded-lg text-white transition-colors"
         >
           {playing ? <Pause size={18} /> : <Play size={18} />}
         </button>
