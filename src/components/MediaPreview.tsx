@@ -26,11 +26,27 @@ function useResolvedSource(source: string | null | undefined) {
   return { url, failed, markFailed: () => setFailed(true), retry: () => setAttempt(value => value + 1) };
 }
 
-export function MediaImage({ source, alt, className }: { source: string; alt: string; className?: string }) {
+export function MediaImage({ source, alt, className, onClick }: { source: string; alt: string; className?: string; onClick?: () => void }) {
   const { url, failed, markFailed, retry } = useResolvedSource(source);
   if (failed) return <div role="status" className={`flex min-h-20 items-center justify-center gap-2 bg-secondary px-3 text-xs text-muted ${className || ''}`}><ImageOff size={15} /> Image unavailable <button type="button" onClick={retry} className="inline-flex items-center gap-1 text-orange-500"><RefreshCw size={12} /> Retry</button></div>;
   if (!url) return <div className={`flex min-h-20 items-center justify-center bg-secondary text-xs text-muted ${className || ''}`}>Loading attachment…</div>;
-  return <img src={url} alt={alt} className={className} onError={markFailed} />;
+  return (
+    <img
+      src={url}
+      alt={alt}
+      className={className}
+      onError={markFailed}
+      onClick={onClick}
+      onKeyDown={onClick ? event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      } : undefined}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    />
+  );
 }
 
 export function MediaAudioPlayer({ source, className }: { source: string; className?: string }) {

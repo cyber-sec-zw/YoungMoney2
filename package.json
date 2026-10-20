@@ -12,7 +12,9 @@
     "cf:dev": "wrangler dev",
     "cf:migrate:local": "wrangler d1 migrations apply trade-journal-pro --local",
     "cf:migrate": "wrangler d1 migrations apply trade-journal-pro --remote",
-    "cf:deploy": "npm run build && wrangler deploy"
+    "cf:deploy": "npm run build && wrangler deploy",
+    "cf:media:configure": "node scripts/configure-supabase-media.mjs",
+    "cf:media:create-project": "node scripts/create-supabase-media-project.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4",

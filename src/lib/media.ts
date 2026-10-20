@@ -1,6 +1,20 @@
 import { supabase } from '@/lib/supabase';
 
 const REF_PREFIX = 'private-media://';
+const FILE_EXTENSION_BY_TYPE: Record<string, string> = {
+  'image/avif': 'avif',
+  'image/gif': 'gif',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'audio/aac': 'aac',
+  'audio/mp4': 'm4a',
+  'audio/mpeg': 'mp3',
+  'audio/ogg': 'ogg',
+  'audio/wav': 'wav',
+  'audio/webm': 'webm',
+  'audio/x-wav': 'wav',
+};
 
 export function privateMediaRef(bucket: string, path: string): string {
   return `${REF_PREFIX}${bucket}/${path}`;
@@ -25,10 +39,19 @@ export async function resolveMediaUrl(value: string): Promise<string> {
 export async function uploadPrivateMedia(file: File | Blob, kind: 'image' | 'audio'): Promise<string> {
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError || !authData.user) throw new Error('Sign in before uploading media.');
-  const ext = file instanceof File ? file.name.split('.').pop() || (kind === 'image' ? 'png' : 'webm') : 'webm';
-  const path = `${authData.user.id}/${crypto.randomUUID()}.${ext}`;
-  const contentType = file.type || (kind === 'audio' ? 'audio/webm' : 'application/octet-stream');
+  const contentType = file.type.split(';', 1)[0].trim().toLowerCase() || (kind === 'audio' ? 'audio/webm' : '');
+  const extension = FILE_EXTENSION_BY_TYPE[contentType];
+  if (!extension || !contentType.startsWith(`${kind}/`)) {
+    throw new Error(kind === 'image'
+      ? 'Use a PNG, JPEG, WebP, GIF, or AVIF image.'
+      : 'Use a supported AAC, MP4, MPEG, OGG, WAV, or WebM voice note.');
+  }
+  if (file.size > 15 * 1024 * 1024) throw new Error('Attachments must be 15 MB or smaller.');
+  if (!file.size) throw new Error('The attachment is empty.');
+  const path = `${authData.user.id}/${crypto.randomUUID()}.${extension}`;
   const { error } = await supabase.storage.from('trading-media').upload(path, file, { contentType, upsert: false });
-  if (error) throw error;
+  if (error) {
+    throw new Error(typeof error.message === 'string' ? error.message : 'Failed to upload attachment. Please try again.');
+  }
   return privateMediaRef('trading-media', path);
 }

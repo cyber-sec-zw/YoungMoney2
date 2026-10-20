@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Upload, X, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { X, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { uploadPrivateMedia } from '@/lib/media';
 import { MediaImage } from './MediaPreview';
 
@@ -7,26 +7,35 @@ interface ScreenshotUploadProps {
   onUpload: (url: string) => void;
   existingUrl?: string | null;
   label?: string;
+  onUploadingChange?: (uploading: boolean) => void;
 }
 
-export function ScreenshotUpload({ onUpload, existingUrl, label }: ScreenshotUploadProps) {
+export function ScreenshotUpload({ onUpload, existingUrl, label, onUploadingChange }: ScreenshotUploadProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(existingUrl || null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFile = async (file: File) => {
+    if (uploading) return;
     setError(null);
-    if (!file.type.startsWith('image/')) { setError('Choose an image file.'); return; }
+    if (!['image/avif', 'image/gif', 'image/jpeg', 'image/png', 'image/webp'].includes(file.type.toLowerCase())) {
+      setError('Choose a PNG, JPEG, WebP, GIF, or AVIF image.');
+      return;
+    }
     if (file.size > 15 * 1024 * 1024) { setError('Images must be 15 MB or smaller.'); return; }
     setUploading(true);
+    onUploadingChange?.(true);
     try {
       const ref = await uploadPrivateMedia(file, 'image');
       setImageUrl(ref);
       onUpload(ref);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : 'Failed to upload screenshot. Please try again.');
-    } finally { setUploading(false); }
+    } finally {
+      setUploading(false);
+      onUploadingChange?.(false);
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -48,6 +57,7 @@ export function ScreenshotUpload({ onUpload, existingUrl, label }: ScreenshotUpl
         <button
           type="button"
           onClick={removeImage}
+          disabled={uploading}
           className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80"
         >
           <X size={16} />
@@ -59,7 +69,7 @@ export function ScreenshotUpload({ onUpload, existingUrl, label }: ScreenshotUpl
   return (
     <div>
       <div
-        onClick={() => inputRef.current?.click()}
+        onClick={() => { if (!uploading) inputRef.current?.click(); }}
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
         className="flex flex-col items-center justify-center gap-2 p-8 rounded-xl border-2 border-dashed border-themed cursor-pointer hover:border-brand-500 transition-colors"
@@ -77,8 +87,9 @@ export function ScreenshotUpload({ onUpload, existingUrl, label }: ScreenshotUpl
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
         className="hidden"
+        disabled={uploading}
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) handleFile(file);

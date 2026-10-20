@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Plus, Search, Edit2, Trash2, ChevronDown, ChevronUp, Star, Mic, ImageIcon, Download, Filter, X, Clock, CheckCircle } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, ChevronDown, ChevronUp, Star, Download, Filter, X, Clock, CheckCircle } from 'lucide-react';
 import { useTrades } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency, formatPips, formatDateTime, exportToCSV, downloadFile } from '@/lib/utils';
@@ -7,7 +7,7 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { LoadingSpinner, EmptyState } from '@/components/ui/Feedback';
 import { Modal } from '@/components/ui/Modal';
 import { TradeForm } from '@/components/TradeForm';
-import { MediaAudioPlayer, MediaImage } from '@/components/MediaPreview';
+import { TradeAttachments } from '@/components/TradeAttachments';
 import type { Trade, TradeInput, TradeDirection, TradeStatus } from '@/lib/types';
 import { format, parseISO } from 'date-fns';
 
@@ -338,22 +338,7 @@ export function TradesPage() {
                           <p className="mt-1 text-sm whitespace-pre-wrap">{t.notes}</p>
                         </div>
                       )}
-                      <div className="flex gap-3">
-                        {t.screenshot_url && (
-                          <span className="badge badge-brand">
-                            <ImageIcon size={12} /> Screenshot
-                          </span>
-                        )}
-                        {t.voice_note_url && (
-                          <div className="flex items-center gap-2">
-                            <span className="badge badge-brand"><Mic size={12} /> Voice Note</span>
-                            <MediaAudioPlayer source={t.voice_note_url} className="h-8" />
-                          </div>
-                        )}
-                      </div>
-                      {t.screenshot_url && (
-                        <MediaImage source={t.screenshot_url} alt="Trade screenshot" className="w-full max-h-48 object-contain rounded-lg border border-themed bg-secondary" />
-                      )}
+                      <TradeAttachments trade={t} />
                     </div>
                   </div>
                 </div>

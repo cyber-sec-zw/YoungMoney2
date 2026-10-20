@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Wallet, Target, TrendingUp, Flame, Activity, Plus, ArrowUpRight, ArrowDownRight, Minus, Star, Clock } from 'lucide-react';
+import { Wallet, Target, TrendingUp, Flame, Activity, Plus, ArrowUpRight, ArrowDownRight, Minus, Star, Clock, Eye } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import { useAllTestTrades, useBacktests, useForwardTrades, useTestSessions, useTrades, useTradingAccounts, useTradingAccountAdjustments } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
@@ -16,6 +16,7 @@ import { MoodTracker } from '@/components/MoodTracker';
 import { StrategyEdgeScore } from '@/components/StrategyEdgeScore';
 import { RiskGuardian } from '@/components/RiskGuardian';
 import { RiskSettingsModal } from '@/components/RiskSettingsModal';
+import { TradeAttachments } from '@/components/TradeAttachments';
 import { useRiskSettings, useChecklist, useTradingPlans } from '@/hooks/useData';
 import type { Trade, TradeInput, RiskSettingsInput } from '@/lib/types';
 import { subDays, format } from 'date-fns';
@@ -33,6 +34,7 @@ export function DashboardPage() {
   const { plans } = useTradingPlans(user?.id);
   const { checklist, addChecklistItem, deleteChecklistItem } = useChecklist(user?.id);
   const [showAdd, setShowAdd] = useState(false);
+  const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [showRiskSettings, setShowRiskSettings] = useState(false);
   const [accountFilter, setAccountFilter] = useState('all');
   const [source, setSource] = useState<'live' | 'backtest' | 'forward'>('live');
@@ -371,6 +373,7 @@ export function DashboardPage() {
                   <th className="text-left py-2 px-2 font-medium">Outcome</th>
                   <th className="text-right py-2 px-2 font-medium">P&L</th>
                   <th className="text-right py-2 px-2 font-medium">Pips</th>
+                  <th className="text-right py-2 px-2 font-medium">View</th>
                 </tr>
               </thead>
               <tbody>
@@ -399,6 +402,17 @@ export function DashboardPage() {
                       {t.status === 'open' ? 'Pending' : mixedCurrencyView ? formatAccountMoney(t.pnl, accounts.find(a => a.id === t.account_id)?.base_currency || 'USD') : account ? formatAccountMoney(t.pnl, account.base_currency) : formatCurrency(t.pnl)}
                     </td>
                     <td className="py-2.5 px-2 text-right font-mono text-muted">{t.pips?.toFixed(1) || '0.0'}</td>
+                    <td className="py-2.5 px-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTrade(t)}
+                        className="btn-ghost p-1.5"
+                        aria-label={`View ${t.pair} trade details`}
+                        title="View trade details"
+                      >
+                        <Eye size={16} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -413,6 +427,47 @@ export function DashboardPage() {
         <TradeForm onSubmit={handleSubmit} onCancel={() => setShowAdd(false)} />
       </Modal>
 
+      <Modal
+        open={!!selectedTrade}
+        onClose={() => setSelectedTrade(null)}
+        title={selectedTrade ? `${selectedTrade.pair} · Trade details` : 'Trade details'}
+        size="lg"
+      >
+        {selectedTrade && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <TradeDetail label="Entered" value={formatDateTime(selectedTrade.entry_time)} />
+              <TradeDetail label="Direction" value={selectedTrade.direction === 'long' ? 'Long' : 'Short'} />
+              <TradeDetail label="Status" value={selectedTrade.status === 'open' ? 'Open' : selectedTrade.outcome || 'Closed'} />
+              <TradeDetail label="Entry" value={selectedTrade.entry_price?.toString() || '—'} />
+              <TradeDetail label="Exit" value={selectedTrade.exit_price?.toString() || '—'} />
+              <TradeDetail
+                label="P&L"
+                value={selectedTrade.status === 'open'
+                  ? 'Pending'
+                  : formatAccountMoney(selectedTrade.pnl, accounts.find(item => item.id === selectedTrade.account_id)?.base_currency || 'USD')}
+              />
+              <TradeDetail label="Account" value={accounts.find(item => item.id === selectedTrade.account_id)?.name || 'Unassigned'} />
+              <TradeDetail label="Strategy" value={selectedTrade.strategy || '—'} />
+              <TradeDetail label="Broker" value={selectedTrade.broker || '—'} />
+            </div>
+            {selectedTrade.notes && (
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Notes</h3>
+                <p className="mt-1 whitespace-pre-wrap text-sm">{selectedTrade.notes}</p>
+              </div>
+            )}
+            {selectedTrade.lessons && (
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Lesson</h3>
+                <p className="mt-1 whitespace-pre-wrap text-sm">{selectedTrade.lessons}</p>
+              </div>
+            )}
+            <TradeAttachments trade={selectedTrade} />
+          </div>
+        )}
+      </Modal>
+
       <RiskSettingsModal
         open={showRiskSettings}
         onClose={() => setShowRiskSettings(false)}
@@ -422,6 +477,15 @@ export function DashboardPage() {
         onAddChecklistItem={addChecklistItem}
         onDeleteChecklistItem={deleteChecklistItem}
       />
+    </div>
+  );
+}
+
+function TradeDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-secondary p-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</p>
+      <p className="mt-1 break-words text-sm font-medium">{value}</p>
     </div>
   );
 }

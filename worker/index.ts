@@ -1,6 +1,12 @@
 /// <reference types="@cloudflare/workers-types" />
 
-export interface Env { DB: D1Database; MEDIA?: R2Bucket; PILOT_INVITE_CODE?: string }
+export interface Env {
+  DB: D1Database;
+  MEDIA?: R2Bucket;
+  PILOT_INVITE_CODE?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
+}
 
 const encoder = new TextEncoder();
 const ownedTables = new Set(['trades', 'journal_entries', 'trader_strategies', 'strategy_entry_models', 'strategy_checklist_items', 'pre_trade_checklist', 'trading_plans', 'risk_settings', 'goals', 'backtest_results', 'forward_trades', 'trading_rules', 'market_sessions', 'trading_setups', 'strategy_test_sessions', 'strategy_test_trades', 'resources', 'notes', 'study_materials', 'brokers', 'charting_tools', 'weekly_reviews', 'goal_templates', 'trading_accounts', 'trading_account_adjustments', 'instrument_favorites', 'market_instruments']);
@@ -105,46 +111,178 @@ async function databaseRoute(request: Request, env: Env, user: Record<string, un
   return response({ error: 'Unsupported data action.' }, 400);
 }
 
+const mediaLimit = 15 * 1024 * 1024;
+const allowedMediaTypes = new Set([
+  'image/avif', 'image/gif', 'image/jpeg', 'image/png', 'image/webp',
+  'audio/aac', 'audio/mp4', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm', 'audio/x-wav',
+]);
+
+function getSupabaseStorageConfig(env: Env) {
+  if (!env.SUPABASE_URL && !env.SUPABASE_SERVICE_ROLE_KEY) return null;
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    return { error: 'Private media storage is only partially configured. Set both SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.' };
+  }
+  let url: URL;
+  try {
+    url = new URL(env.SUPABASE_URL);
+  } catch {
+    return { error: 'SUPABASE_URL must be a valid HTTPS project URL.' };
+  }
+  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+    return { error: 'SUPABASE_URL must be a valid HTTPS project URL without credentials or query parameters.' };
+  }
+  return { url: url.origin, key: env.SUPABASE_SERVICE_ROLE_KEY };
+}
+
+async function supabaseStorageRequest(config: { url: string; key: string }, path: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers);
+  headers.set('apikey', config.key);
+  headers.set('authorization', `Bearer ${config.key}`);
+  return fetch(`${config.url}/storage/v1/${path}`, { ...init, headers });
+}
+
+async function readBoundedBody(request: Request, limit: number): Promise<Uint8Array | null> {
+  if (!request.body) return new Uint8Array();
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
+function mediaProviderError(status: number) {
+  if (status === 404) return response({ error: 'Attachment not found.' }, 404);
+  if (status === 409) return response({ error: 'File already exists.' }, 409);
+  if (status === 413) return response({ error: 'Attachments must be 15 MB or smaller.' }, 413);
+  return response({ error: `Private media storage request failed (HTTP ${status}).` }, 502);
+}
+
+interface MediaFile { id: string; name: string; metadata: { mimetype: string } }
+
+async function listR2Media(media: R2Bucket | undefined, owner: string, count: number): Promise<MediaFile[]> {
+  if (!media) return [];
+  const objects: R2Object[] = [];
+  let cursor: string | undefined;
+  while (objects.length < count) {
+    const page = await media.list({ prefix: `${owner}/`, limit: 1000, cursor });
+    objects.push(...page.objects);
+    if (!page.truncated || !page.cursor) break;
+    cursor = page.cursor;
+  }
+  return objects.slice(0, count).map(object => ({
+    id: object.etag,
+    name: object.key.slice(owner.length + 1),
+    metadata: { mimetype: object.httpMetadata?.contentType || 'application/octet-stream' },
+  }));
+}
+
+async function listSupabaseMedia(config: { url: string; key: string }, owner: string, count: number): Promise<{ files: MediaFile[] } | { error: Response }> {
+  const files: MediaFile[] = [];
+  for (let offset = 0; offset < count; offset += 1000) {
+    const limit = Math.min(1000, count - offset);
+    const result = await supabaseStorageRequest(config, 'object/list/trading-media', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prefix: owner, limit, offset, sortBy: { column: 'name', order: 'asc' } }),
+    });
+    if (!result.ok) return { error: mediaProviderError(result.status) };
+    const entries = await result.json() as { id?: string | null; name?: string; metadata?: { mimetype?: string } | null }[];
+    const page = entries.filter(entry => entry.name && entry.id).map(entry => ({
+      id: entry.id!,
+      name: `${owner}/${entry.name}`,
+      metadata: { mimetype: entry.metadata?.mimetype || 'application/octet-stream' },
+    }));
+    files.push(...page);
+    if (page.length < limit) break;
+  }
+  return { files };
+}
+
 async function mediaRoute(request: Request, env: Env, user: Record<string, unknown>, url: URL) {
-  if (!env.MEDIA) return response({ error: 'File attachments are disabled in this no-cost pilot. Text journal capture is available.' }, 503);
   const owner = String(user.id);
+  const configuredStorage = getSupabaseStorageConfig(env);
+  if (configuredStorage && 'error' in configuredStorage) return response({ error: configuredStorage.error }, 503);
+  const supabaseStorage = configuredStorage && 'key' in configuredStorage ? configuredStorage : null;
+  if (!supabaseStorage && !env.MEDIA) {
+    return response({ error: 'Private media is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY and create the private trading-media bucket.' }, 503);
+  }
+
   if (request.method === 'GET' && url.pathname === '/api/media/list') {
     const prefix = url.searchParams.get('prefix') || owner;
     if (prefix !== owner && prefix !== `${owner}/`) return response({ error: 'Invalid private media prefix.' }, 400);
     const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get('limit')) || 100));
     const offset = Math.min(10000, Math.max(0, Number(url.searchParams.get('offset')) || 0));
-    const objects: R2Object[] = [];
-    let cursor: string | undefined;
-    while (objects.length < offset + limit) {
-      const page = await env.MEDIA.list({ prefix: `${owner}/`, limit: 1000, cursor });
-      objects.push(...page.objects);
-      if (!page.truncated || !page.cursor) break;
-      cursor = page.cursor;
+    const count = offset + limit;
+    let supabaseFiles: MediaFile[] = [];
+    if (supabaseStorage) {
+      const listed = await listSupabaseMedia(supabaseStorage, owner, count);
+      if ('error' in listed) return listed.error;
+      supabaseFiles = listed.files;
     }
-    const files = objects.slice(offset, offset + limit).map(object => ({
-      id: object.etag,
-      name: object.key.slice(owner.length + 1),
-      metadata: { mimetype: object.httpMetadata?.contentType || 'application/octet-stream' },
-    }));
+    const r2Files = await listR2Media(env.MEDIA, owner, count);
+    const files = [...new Map([...supabaseFiles, ...r2Files].map(file => [file.name, file])).values()]
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .slice(offset, offset + limit);
     return response({ files });
   }
+
   const path = url.searchParams.get('path') || '';
   if (!path.startsWith(`${owner}/`) || path.split('/').some(part => !part || part === '.' || part === '..' || part.includes('\\'))) {
     return response({ error: 'Invalid private media path.' }, 400);
   }
 
   if (request.method === 'PUT' && url.pathname === '/api/media/upload') {
-    const limit = 15 * 1024 * 1024;
     const declaredSize = Number(request.headers.get('content-length') || 0);
-    if (declaredSize > limit) return response({ error: 'Attachments must be 15 MB or smaller.' }, 413);
-    if (await env.MEDIA.head(path)) return response({ error: 'File already exists.' }, 409);
-    const bytes = await request.arrayBuffer();
-    if (bytes.byteLength > limit) return response({ error: 'Attachments must be 15 MB or smaller.' }, 413);
-    await env.MEDIA.put(path, bytes, { httpMetadata: { contentType: request.headers.get('content-type') || 'application/octet-stream' } });
+    if (declaredSize > mediaLimit) return response({ error: 'Attachments must be 15 MB or smaller.' }, 413);
+    const contentType = (request.headers.get('content-type') || '').split(';', 1)[0].trim().toLowerCase();
+    if (!allowedMediaTypes.has(contentType)) return response({ error: 'Use a supported PNG, JPEG, WebP, GIF, AVIF, or audio file format.' }, 415);
+    const bytes = await readBoundedBody(request, mediaLimit);
+    if (!bytes) return response({ error: 'Attachments must be 15 MB or smaller.' }, 413);
+    if (!bytes.byteLength) return response({ error: 'The attachment is empty.' }, 400);
+    if (supabaseStorage) {
+      const result = await supabaseStorageRequest(supabaseStorage, `object/trading-media/${path.split('/').map(encodeURIComponent).join('/')}`, {
+        method: 'POST',
+        headers: { 'content-type': contentType, 'x-upsert': 'false' },
+        body: bytes,
+      });
+      if (!result.ok) return mediaProviderError(result.status);
+    } else if (env.MEDIA) {
+      if (await env.MEDIA.head(path)) return response({ error: 'File already exists.' }, 409);
+      await env.MEDIA.put(path, bytes, { httpMetadata: { contentType } });
+    }
     return response({ path });
   }
 
   if (request.method === 'GET' && url.pathname === '/api/media/download') {
+    if (supabaseStorage) {
+      const result = await supabaseStorageRequest(supabaseStorage, `object/trading-media/${path.split('/').map(encodeURIComponent).join('/')}`);
+      if (result.ok) {
+        return new Response(result.body, {
+          headers: {
+            'content-type': result.headers.get('content-type') || 'application/octet-stream',
+            'cache-control': 'private, no-store',
+            'x-content-type-options': 'nosniff',
+          },
+        });
+      }
+      if (result.status !== 404 || !env.MEDIA) return mediaProviderError(result.status);
+    }
+    if (!env.MEDIA) return response({ error: 'Attachment not found.' }, 404);
     const object = await env.MEDIA.get(path);
     if (!object) return response({ error: 'Attachment not found.' }, 404);
     return new Response(object.body, {

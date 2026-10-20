@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Save, X, Calculator, TrendingUp, TrendingDown, Zap, ChevronRight, ChevronLeft, CheckCircle2, Image, Mic, PenLine, Target, Brain, AlertTriangle, Clock, CheckCircle, ListChecks, Camera, MessageSquare, Lock, Star } from 'lucide-react';
+import { Save, X, Calculator, TrendingUp, TrendingDown, Zap, ChevronRight, ChevronLeft, CheckCircle2, Target, Brain, AlertTriangle, Clock, CheckCircle, ListChecks, Camera, Lock, Star } from 'lucide-react';
 import type { Trade, TradeInput, TradeDirection, TradeSession, AccountType, EmotionalState, TradeStatus, TradeChecklistSnapshot } from '@/lib/types';
 import { calcPips, calcPnl, formatCurrency, formatPips, getInstrumentType } from '@/lib/utils';
 import { BROKER_SUGGESTIONS, LESSON_SUGGESTIONS, NOTE_SUGGESTIONS } from '@/lib/suggestions';
@@ -31,7 +31,7 @@ const STEPS = [
   { id: 0, label: 'Strategy', icon: Target },
   { id: 1, label: 'Context', icon: Brain },
   { id: 2, label: 'Trade', icon: TrendingUp },
-  { id: 3, label: 'Entry Media', icon: Camera },
+  { id: 3, label: 'Attachments', icon: Camera },
   { id: 4, label: 'Closure', icon: CheckCircle },
 ];
 
@@ -75,8 +75,10 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
   const [checklistSnapshot, setChecklistSnapshot] = useState<TradeChecklistSnapshot[]>([]);
   const [checklistOverrideReason, setChecklistOverrideReason] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [mediaUploads, setMediaUploads] = useState({ screenshot: false, voice: false });
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
+  const mediaUploading = mediaUploads.screenshot || mediaUploads.voice;
 
   const { models: entryModels } = useStrategyEntryModels(form.strategy_id);
   const { items: strategyChecklistItems } = useStrategyChecklist(form.strategy_id, form.entry_model_id);
@@ -117,6 +119,12 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
 
   const update = (field: keyof TradeInput, value: any) => {
     setForm(f => ({ ...f, [field]: value }));
+  };
+
+  const updateTradeMedia = (kind: 'screenshot' | 'voice', value: string) => {
+    setForm(current => kind === 'screenshot'
+      ? { ...current, screenshot_url: value || null, entry_screenshot_url: value || null }
+      : { ...current, voice_note_url: value || null, entry_voice_note_url: value || null });
   };
 
   const selectInstrument = (instrument: (typeof instruments)[number] | null, symbol: string) => {
@@ -265,6 +273,11 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
   const handleSubmit = async () => {
     setSaving(true);
     setError(null);
+    if (mediaUploading) {
+      setError('Wait for the attachment upload to finish before saving this trade.');
+      setSaving(false);
+      return;
+    }
     if (!form.pair.trim()) {
       setError('Please enter a currency pair (e.g. EUR/USD).');
       setSaving(false);
@@ -330,8 +343,8 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
       risk_reward_ratio: autoRr != null ? parseFloat(autoRr.toFixed(2)) : form.risk_reward_ratio,
       entry_time: new Date(form.entry_time).toISOString(),
       exit_time: form.exit_time ? new Date(form.exit_time).toISOString() : null,
-      screenshot_url: form.entry_screenshot_url,
-      voice_note_url: form.entry_voice_note_url,
+      screenshot_url: form.screenshot_url || form.entry_screenshot_url,
+      voice_note_url: form.voice_note_url || form.entry_voice_note_url,
       checklist_items: checklistSnapshot.length > 0 ? checklistSnapshot : null,
       setup_quality: setupQualityFromChecklist(checklistSnapshot),
       checklist_override_reason: checklistOverrideReason,
@@ -366,6 +379,10 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
     return null;
   };
   const navigateToStep = (targetStep: number) => {
+    if (mediaUploading) {
+      setError('Wait for the attachment upload to finish before changing steps.');
+      return;
+    }
     if (targetStep > step) {
       for (let currentStep = step; currentStep < targetStep; currentStep += 1) {
         const validationError = validateStep(currentStep);
@@ -772,18 +789,27 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
       {step === 3 && (
         <div className="space-y-4 animate-fade-in">
           <p className="text-sm text-secondary">
-            Record your thought process as you enter this trade. This is your entry setup — upload a screenshot and/or record a voice note.
+            Add one chart image and one voice note for this trade. They are saved with the trade and available from its details.
           </p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div>
-              <label className={labelCls}>Setup Screenshot</label>
-              <ScreenshotUpload onUpload={url => update('entry_screenshot_url', url)} existingUrl={form.entry_screenshot_url} />
+              <label className={labelCls}>Trade Screenshot (optional)</label>
+              <ScreenshotUpload
+                onUpload={url => updateTradeMedia('screenshot', url)}
+                existingUrl={form.screenshot_url || form.entry_screenshot_url}
+                onUploadingChange={uploading => setMediaUploads(current => ({ ...current, screenshot: uploading }))}
+              />
             </div>
             <div>
-              <label className={labelCls}>Entry Voice Note</label>
-              <VoiceRecorder onUpload={url => update('entry_voice_note_url', url)} existingUrl={form.entry_voice_note_url} />
+              <label className={labelCls}>Trade Voice Note (optional)</label>
+              <VoiceRecorder
+                onUpload={url => updateTradeMedia('voice', url)}
+                existingUrl={form.voice_note_url || form.entry_voice_note_url}
+                onUploadingChange={uploading => setMediaUploads(current => ({ ...current, voice: uploading }))}
+              />
             </div>
           </div>
+          {mediaUploading && <p role="status" className="text-xs text-secondary">Uploading attachment… You can continue when it finishes.</p>}
         </div>
       )}
 
@@ -860,16 +886,6 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div>
-                  <label className={labelCls}>Closure Screenshot</label>
-                  <ScreenshotUpload onUpload={url => update('closure_screenshot_url', url)} existingUrl={form.closure_screenshot_url} />
-                </div>
-                <div>
-                  <label className={labelCls}>Closure Voice Note</label>
-                  <VoiceRecorder onUpload={url => update('closure_voice_note_url', url)} existingUrl={form.closure_voice_note_url} />
-                </div>
-              </div>
             </>
           )}
         </div>
@@ -884,15 +900,15 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
           )}
         </div>
         <div className="flex items-center gap-3">
-          <button type="button" onClick={onCancel} className="btn-secondary">
+          <button type="button" onClick={onCancel} disabled={saving || mediaUploading} className="btn-secondary">
             <X size={18} /> Cancel
           </button>
           {step < lastStep ? (
-            <button type="button" onClick={() => navigateToStep(step + 1)} className="btn-primary">
+            <button type="button" onClick={() => navigateToStep(step + 1)} disabled={mediaUploading} className="btn-primary">
               Next <ChevronRight size={18} />
             </button>
           ) : (
-            <button type="button" onClick={handleSubmit} disabled={saving} className="btn-primary">
+            <button type="button" onClick={handleSubmit} disabled={saving || mediaUploading} className="btn-primary">
               <Save size={18} /> {saving ? 'Saving...' : isEditMode ? 'Update Trade' : 'Save Trade'}
             </button>
           )}

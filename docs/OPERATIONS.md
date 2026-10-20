@@ -1,6 +1,6 @@
 # Cloudflare pilot operations
 
-This $0 pilot runs as one Cloudflare Worker (`ym-fx`) serving the Vite app and API, with D1 (`trade-journal-pro`) for account and journal records. The default site URL is `https://ym-fx.ethical-hacker263.workers.dev`; a custom domain can be configured in Cloudflare after adding a domain you own. The `supabase` module in the client is a compatibility adapter to this Worker; this deployment does not use a Supabase project. R2 is intentionally not enabled: file attachments are unavailable, while text-based journal capture remains available.
+This $0 pilot runs as one Cloudflare Worker (`ym-fx`) serving the Vite app and API, with D1 (`trade-journal-pro`) for account and journal records. The default site URL is `https://ym-fx.ethical-hacker263.workers.dev`; a custom domain can be configured in Cloudflare after adding a domain you own. Cloudflare remains responsible for application data and authentication; Supabase Storage is used only for private image and audio attachments. R2 is optional and used only to read any older media stored there.
 
 ## One-time setup
 
@@ -27,6 +27,20 @@ Requirements: a Cloudflare account, Node.js/npm, and Wrangler authenticated to t
    ```
 
 Do not commit the invite code or any account credentials. New account creation fails closed until `PILOT_INVITE_CODE` is configured. All participants use the deployed site URL; use the same URL for subsequent backups and restores.
+
+## Private media storage
+
+Create a Supabase personal access token from [Supabase account tokens](https://supabase.com/dashboard/account/tokens) with access to create projects and read project API keys. Do not paste the token into chat, a command argument, or a committed file. From a VS Code terminal, enter:
+
+```sh
+read -s -p "Supabase personal access token: " SUPABASE_ACCESS_TOKEN; printf '\n'; export SUPABASE_ACCESS_TOKEN; npm run cf:media:create-project; unset SUPABASE_ACCESS_TOKEN
+```
+
+The token is hidden while typed and is not saved in shell history. The script lists your Supabase organizations and available project regions, recommends the EMEA grouping, asks before creating the project, and creates/reuses `ym-fx-media`. It then creates or updates the **private** `trading-media` bucket (15 MiB maximum file size and an allowlist of supported image/audio MIME types) and sets `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as secrets on the `ym-fx` Worker. It does not print the service-role key. New uploads and reads are proxied through the authenticated Worker; object paths are restricted to the signed-in user's ID. Never make this bucket public.
+
+The project creation request uses the Supabase Free organization plan. If Supabase requires billing information or the organization has reached its free-project limit, stop and resolve that in the Supabase dashboard; do not switch plans without reviewing the cost.
+
+Supabase currently lists 1 GB file storage and 5 GB egress on Free; verify the current quotas before relying on them. Free projects may pause after one week of inactivity, temporarily interrupting media access until resumed. Keep an encrypted export using **Data Backup & Restore** and monitor Storage usage. The application enforces a 15 MiB maximum per file. Existing external media URLs remain unchanged; legacy Worker/R2 references continue to fall back to R2 only if that binding still exists.
 
 ## Administrator account
 
@@ -60,7 +74,7 @@ Restore adds missing rows and attachments; it does not replace existing rows or 
 
 - This is a small-group information-capture pilot, not a production-grade financial or enterprise system.
 - Do not store broker passwords, API keys, payment details, or identity documents.
-- Keep access limited to invited participants and review D1, Worker, and R2 usage in the Cloudflare dashboard.
+- Keep access limited to invited participants and review D1, Worker, and Supabase Storage usage. Avoid uploading sensitive identity or account credentials as media.
 - Cloudflare Free limits apply. Requests can fail once a daily D1 allowance is reached. Monitor usage and export records regularly.
 - The application currently has no automated email verification, password-reset flow, or operational alerting. Participants should use unique passwords and contact the workspace owner if they lose access.
-- Supabase Edge Functions, Supabase storage, and the provider-source checker are not part of this Cloudflare pilot deployment.
+- Supabase Auth, Edge Functions, and the provider-source checker are not part of this pilot deployment; Supabase is used for private object storage only.
