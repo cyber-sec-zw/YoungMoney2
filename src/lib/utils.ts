@@ -100,8 +100,16 @@ export function isTradeOnDay(trade: Trade, day: Date): boolean {
   return isSameDay(parseISO(trade.entry_time), day);
 }
 
+function closedTrades(trades: Trade[]): Trade[] {
+  return trades.filter(trade => trade.status === 'closed');
+}
+
+function realizedAt(trade: Trade): string {
+  return trade.exit_time || trade.entry_time;
+}
+
 export function computeDashboardStats(trades: Trade[]): DashboardStats {
-  const closed = trades.filter(t => t.status === 'closed');
+  const closed = closedTrades(trades);
   if (closed.length === 0) {
     return {
       totalPnl: 0, totalTrades: 0, winRate: 0, wins: 0, losses: 0, breakevens: 0,
@@ -112,7 +120,7 @@ export function computeDashboardStats(trades: Trade[]): DashboardStats {
     };
   }
 
-  const sorted = [...closed].sort((a, b) => new Date(a.entry_time).getTime() - new Date(b.entry_time).getTime());
+  const sorted = [...closed].sort((a, b) => new Date(realizedAt(a)).getTime() - new Date(realizedAt(b)).getTime());
   const totalPnl = closed.reduce((sum, t) => sum + t.pnl, 0);
   const wins = closed.filter(t => t.outcome === 'win');
   const losses = closed.filter(t => t.outcome === 'loss');
@@ -123,9 +131,8 @@ export function computeDashboardStats(trades: Trade[]): DashboardStats {
 
   // Best/worst day
   const dayMap = new Map<string, number>();
-  trades.forEach(t => {
-    if (t.status === 'open') return;
-    const day = format(parseISO(t.entry_time), 'yyyy-MM-dd');
+  closed.forEach(t => {
+    const day = format(parseISO(realizedAt(t)), 'yyyy-MM-dd');
     dayMap.set(day, (dayMap.get(day) || 0) + t.pnl);
   });
   let bestDay: { date: string; pnl: number } | null = null;
@@ -183,19 +190,19 @@ export function computeDashboardStats(trades: Trade[]): DashboardStats {
 }
 
 export function equityCurveData(trades: Trade[]): { date: string; equity: number; label: string }[] {
-  const closed = trades.filter(t => t.status === 'closed');
-  const sorted = [...closed].sort((a, b) => new Date(a.entry_time).getTime() - new Date(b.entry_time).getTime());
+  const sorted = closedTrades(trades).sort((a, b) => new Date(realizedAt(a)).getTime() - new Date(realizedAt(b)).getTime());
   let running = 0;
   return sorted.map(t => {
     running += t.pnl;
-    return { date: t.entry_time, equity: running, label: format(parseISO(t.entry_time), 'MMM d') };
+    const date = realizedAt(t);
+    return { date, equity: running, label: format(parseISO(date), 'MMM d') };
   });
 }
 
 export function dailyPnlData(trades: Trade[], days: Date[]): { date: string; pnl: number; label: string; trades: number }[] {
-  const closed = trades.filter(t => t.status === 'closed');
+  const closed = closedTrades(trades);
   return days.map(day => {
-    const dayTrades = closed.filter(t => isTradeOnDay(t, day));
+    const dayTrades = closed.filter(t => isSameDay(parseISO(realizedAt(t)), day));
     const pnl = dayTrades.reduce((s, t) => s + t.pnl, 0);
     return { date: format(day, 'yyyy-MM-dd'), pnl, label: format(day, 'MMM d'), trades: dayTrades.length };
   });
@@ -203,7 +210,7 @@ export function dailyPnlData(trades: Trade[], days: Date[]): { date: string; pnl
 
 export function groupByPair(trades: Trade[]): { pair: string; trades: number; pnl: number; winRate: number }[] {
   const map = new Map<string, { trades: number; pnl: number; wins: number }>();
-  trades.forEach(t => {
+  closedTrades(trades).forEach(t => {
     const ex = map.get(t.pair) || { trades: 0, pnl: 0, wins: 0 };
     ex.trades++;
     ex.pnl += t.pnl;
@@ -219,8 +226,8 @@ export function groupByDayOfWeek(trades: Trade[]): { day: string; trades: number
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const map = new Map<string, { trades: number; pnl: number; wins: number }>();
   days.forEach(d => map.set(d, { trades: 0, pnl: 0, wins: 0 }));
-  trades.forEach(t => {
-    const day = format(parseISO(t.entry_time), 'EEE');
+  closedTrades(trades).forEach(t => {
+    const day = format(parseISO(realizedAt(t)), 'EEE');
     const ex = map.get(day)!;
     ex.trades++;
     ex.pnl += t.pnl;
@@ -234,7 +241,7 @@ export function groupByDayOfWeek(trades: Trade[]): { day: string; trades: number
 
 export function groupByDirection(trades: Trade[]): { direction: string; trades: number; pnl: number; winRate: number }[] {
   const map = new Map<string, { trades: number; pnl: number; wins: number }>();
-  trades.forEach(t => {
+  closedTrades(trades).forEach(t => {
     const ex = map.get(t.direction) || { trades: 0, pnl: 0, wins: 0 };
     ex.trades++;
     ex.pnl += t.pnl;
@@ -252,7 +259,7 @@ export function groupBySession(trades: Trade[]): { session: string; trades: numb
     asian: 'Asian', london: 'London', new_york: 'New York', overlap: 'Overlap', sydney: 'Sydney',
   };
   const map = new Map<string, { trades: number; pnl: number; wins: number }>();
-  trades.forEach(t => {
+  closedTrades(trades).forEach(t => {
     if (!t.session) return;
     const ex = map.get(t.session) || { trades: 0, pnl: 0, wins: 0 };
     ex.trades++;
@@ -268,7 +275,7 @@ export function groupBySession(trades: Trade[]): { session: string; trades: numb
 
 export function groupByStrategy(trades: Trade[]): { strategy: string; trades: number; pnl: number; winRate: number }[] {
   const map = new Map<string, { trades: number; pnl: number; wins: number }>();
-  trades.forEach(t => {
+  closedTrades(trades).forEach(t => {
     if (!t.strategy) return;
     const ex = map.get(t.strategy) || { trades: 0, pnl: 0, wins: 0 };
     ex.trades++;

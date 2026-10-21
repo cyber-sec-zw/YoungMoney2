@@ -8,8 +8,6 @@ import { CalendarPage } from '@/pages/CalendarPage';
 import { AnalyticsPage } from '@/pages/AnalyticsPage';
 import { JournalPage } from '@/pages/JournalPage';
 import { AIInsightsPage } from '@/pages/AIInsightsPage';
-import { LeaderboardPage } from '@/pages/LeaderboardPage';
-import { ComparePage } from '@/pages/ComparePage';
 import { AuthPage } from '@/pages/AuthPage';
 import { LandingPage } from '@/pages/LandingPage';
 import { OnboardingPage } from '@/pages/OnboardingPage';
@@ -34,7 +32,7 @@ import { reportDataError } from '@/lib/recovery';
 import { RefreshCw } from 'lucide-react';
 
 const PAGE_IDS: PageId[] = [
-  'dashboard', 'trades', 'calendar', 'analytics', 'journal', 'ai', 'leaderboard', 'compare',
+  'dashboard', 'trades', 'calendar', 'analytics', 'journal', 'ai',
   'trading-plan', 'goals', 'risk-management', 'market-sessions', 'setups', 'strategy-testing',
   'strategies', 'resources', 'notes', 'study-material', 'brokers-charting', 'weekly-reviews',
   'account-settings',
@@ -141,8 +139,6 @@ function AppContent() {
         {page === 'analytics' && <AnalyticsPage />}
         {page === 'journal' && <JournalPage />}
         {page === 'ai' && <AIInsightsPage />}
-        {page === 'leaderboard' && <LeaderboardPage />}
-        {page === 'compare' && <ComparePage />}
         {page === 'trading-plan' && <TradingPlanPage />}
         {page === 'goals' && <GoalsPage />}
         {page === 'risk-management' && <RiskManagementPage />}

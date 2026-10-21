@@ -223,7 +223,7 @@ export function DashboardPage() {
 
       {/* Risk Guardian */}
       {source === 'live' && <div className="mb-6">
-        <RiskGuardian trades={trades} settings={settings} onConfigure={() => setShowRiskSettings(true)} />
+        <RiskGuardian trades={trades} settings={settings} account={account} plan={accountPlan} onConfigure={() => setShowRiskSettings(true)} />
       </div>}
 
       {/* Trade Calculator */}

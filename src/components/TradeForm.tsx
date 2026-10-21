@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Save, X, Calculator, TrendingUp, TrendingDown, Zap, ChevronRight, ChevronLeft, CheckCircle2, Target, Brain, AlertTriangle, Clock, CheckCircle, ListChecks, Camera, Lock, Star } from 'lucide-react';
 import type { Trade, TradeInput, TradeDirection, TradeSession, AccountType, EmotionalState, TradeStatus, TradeChecklistSnapshot } from '@/lib/types';
-import { calcPips, calcPnl, formatCurrency, formatPips, getInstrumentType } from '@/lib/utils';
-import { BROKER_SUGGESTIONS, LESSON_SUGGESTIONS, NOTE_SUGGESTIONS } from '@/lib/suggestions';
-import { useChecklist, useStrategies, useStrategyChecklist, useStrategyEntryModels, useTradingPlans, useSetups, useMarketInstruments, useTradingAccounts, useInstrumentFavorites, useTrades, useTradingAccountAdjustments } from '@/hooks/useData';
+import { calcPips, calcPnl, formatPips, getInstrumentType } from '@/lib/utils';
+import { BROKER_SUGGESTIONS, LESSON_SUGGESTIONS } from '@/lib/suggestions';
+import { useChecklist, useStrategies, useStrategyChecklist, useStrategyEntryModels, useTradingPlans, useSetups, useMarketInstruments, useTradingAccounts, useInstrumentFavorites, useTrades, useTradingAccountAdjustments, useRiskSettings } from '@/hooks/useData';
 import { useAuth } from '@/context/AuthContext';
 import { VoiceRecorder } from './VoiceRecorder';
 import { ScreenshotUpload } from './ScreenshotUpload';
@@ -12,7 +12,7 @@ import { PreTradeChecklist } from './PreTradeChecklist';
 import { EntitySelect } from './EntitySelect';
 import { InstrumentPicker } from './InstrumentPicker';
 import { TradingViewChart } from './TradingViewChart';
-import { calculatePositionSize, defaultTradeLevels, distancePresets, examplePriceIsUnconfirmed, instrumentDistanceLabel, instrumentPnl, priceAtDistance, SIZE_PRESETS } from '@/lib/instrumentMath';
+import { calculatePositionSize, createTradeCalculationSnapshot, defaultTradeLevels, distancePresets, examplePriceIsUnconfirmed, instrumentDistanceLabel, instrumentPnl, priceAtDistance, SIZE_PRESETS } from '@/lib/instrumentMath';
 import { setupQualityFromChecklist } from '@/lib/setupQuality';
 
 interface TradeFormProps {
@@ -50,12 +50,13 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
   const { accounts } = useTradingAccounts(user?.id);
   const { trades: accountTrades } = useTrades(user?.id);
   const { adjustments } = useTradingAccountAdjustments(user?.id);
+  const { settings: userRiskSettings } = useRiskSettings(user?.id);
 
   const [form, setForm] = useState<TradeInput>(() => initial ? { ...initial } : {
     pair: '', direction: 'long', entry_price: null, exit_price: null, take_profit: null,
     lot_size: null, outcome: null, status: 'open', pnl: 0, pips: 0,
     strategy: '', strategy_id: null, entry_model_id: null, setup_id: null, plan_id: null, account_id: null, instrument_id: null,
-    stop_loss: null, conversion_rate: null, example_values_confirmed: true,
+    stop_loss: null, conversion_rate: null, fees: 0, calculation_snapshot: null, example_values_confirmed: true,
     capture_mode: 'live',
     session: null, broker: '', account_type: null,
     entry_time: localDateTimeInputValue(), exit_time: null,
@@ -115,9 +116,9 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
       update('strategy_id', defaultAccount.default_strategy_id);
       update('strategy', strategies.find(s => s.id === defaultAccount.default_strategy_id)?.name || '');
     }
-  }, [initial, accounts, strategies, plans, form.account_id, form.strategy_id, form.plan_id]);
+  }, [initial, accounts, strategies, plans, form.account_id, form.strategy_id, form.plan_id, form.direction]);
 
-  const update = (field: keyof TradeInput, value: any) => {
+  const update = <Field extends keyof TradeInput>(field: Field, value: TradeInput[Field]) => {
     setForm(f => ({ ...f, [field]: value }));
   };
 
@@ -173,6 +174,9 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
   ];
   const selectedAccount = accounts.find(a => a.id === form.account_id) || null;
   const selectedPlan = plans.find(plan => plan.id === form.plan_id) || null;
+  const formatAccountCurrency = (value: number) => new Intl.NumberFormat(undefined, {
+    style: 'currency', currency: selectedAccount?.base_currency || 'USD', maximumFractionDigits: 2,
+  }).format(value);
   const effectiveRiskPercent = selectedPlan?.max_risk_per_trade_pct ?? selectedAccount?.risk_per_trade_pct ?? null;
   const needsConversion = !!selectedInstrument && !!selectedAccount && selectedInstrument.quote_currency !== selectedAccount.base_currency;
   const conversionRate = needsConversion ? Number(form.conversion_rate) : 1;
@@ -201,7 +205,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
       const levels = defaultTradeLevels(preferred, preferred.example_price, form.direction);
       setStopLoss(String(levels.stop)); update('stop_loss', levels.stop); update('take_profit', levels.target);
     }
-  }, [initial, form.pair, instruments, favoriteIds, favoritesLoading, user?.id]);
+  }, [initial, form.pair, form.direction, instruments, favoriteIds, favoritesLoading, user?.id]);
 
   const toggleMistake = (mistake: string) => {
     setForm(f => ({
@@ -220,6 +224,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
     const lot = form.lot_size;
     const pair = form.pair;
     const direction = form.direction;
+    const fees = Math.max(0, Number(form.fees) || 0);
 
     let pips = 0;
     let pnl = 0;
@@ -233,9 +238,9 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
       pips = selectedInstrument
         ? (direction === 'long' ? exit - entry : entry - exit) / (selectedInstrument.asset_class === 'fx' && selectedInstrument.pip_size ? selectedInstrument.pip_size : selectedInstrument.price_increment)
         : calcPips(pair, direction, entry, exit);
-      if (lot) pnl = selectedInstrument
+      if (lot) pnl = (selectedInstrument
         ? instrumentPnl(selectedInstrument, direction, entry, exit, lot, conversionRate || 1)
-        : calcPnl(pips, lot, pair);
+        : calcPnl(pips, lot, pair)) - fees;
       outcome = pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven';
     }
 
@@ -253,9 +258,9 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
       potentialPips = selectedInstrument
         ? (direction === 'long' ? tp - entry : entry - tp) / (selectedInstrument.asset_class === 'fx' && selectedInstrument.pip_size ? selectedInstrument.pip_size : selectedInstrument.price_increment)
         : calcPips(pair, direction, entry, tp);
-      potentialPnl = selectedInstrument
+      potentialPnl = (selectedInstrument
         ? instrumentPnl(selectedInstrument, direction, entry, tp, lot, conversionRate || 1)
-        : calcPnl(potentialPips, lot, pair);
+        : calcPnl(potentialPips, lot, pair)) - fees;
       const risk = sl != null ? Math.abs(entry - sl) : null;
       if (risk && risk > 0) {
         const reward = direction === 'long' ? tp - entry : entry - tp;
@@ -268,7 +273,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
     const instType = pair ? getInstrumentType(pair) : 'fx';
 
     return { pips, pnl, rr, outcome, potentialPips, potentialPnl, potentialRr, hasData, isClosed, instType };
-  }, [form.entry_price, form.exit_price, form.take_profit, form.lot_size, form.pair, form.direction, form.instrument_id, form.conversion_rate, form.account_id, stopLoss, selectedInstrument, conversionRate]);
+  }, [form.entry_price, form.exit_price, form.take_profit, form.lot_size, form.pair, form.direction, form.fees, stopLoss, selectedInstrument, conversionRate]);
 
   const handleSubmit = async () => {
     setSaving(true);
@@ -330,11 +335,15 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
       instrument_id: selectedInstrument && !selectedInstrument.id.startsWith('seed:') && !selectedInstrument.id.startsWith('custom-local:') ? selectedInstrument.id : null,
       stop_loss: stopLoss ? Number(stopLoss) : null,
       conversion_rate: needsConversion ? conversionRate : 1,
+      fees: Math.max(0, Number(form.fees) || 0),
+      calculation_snapshot: selectedInstrument && selectedAccount
+        ? createTradeCalculationSnapshot(selectedInstrument, selectedAccount.base_currency, conversionRate || 1)
+        : null,
       example_values_confirmed: true,
       capture_mode: form.capture_mode || 'live',
       entry_price_confirmed_actual: form.capture_mode === 'live' ? actualFillConfirmed : false,
       risk_percent: selectedAccount && stopLoss && selectedInstrument && form.lot_size && effectiveBalance > 0
-        ? Math.abs(instrumentPnl(selectedInstrument, 'long', form.entry_price!, Number(stopLoss), form.lot_size, conversionRate || 1)) / effectiveBalance * 100
+        ? (Math.abs(instrumentPnl(selectedInstrument, 'long', form.entry_price!, Number(stopLoss), form.lot_size, conversionRate || 1)) + Math.max(0, Number(form.fees) || 0)) / effectiveBalance * 100
         : form.risk_percent,
       status: autoStatus,
       pips: parseFloat(autoPips.toFixed(1)),
@@ -353,8 +362,8 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
 
     try {
       await onSubmit(finalData);
-    } catch (err: any) {
-      setError(err.message || 'Failed to save trade.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save trade.');
       setSaving(false);
     }
   };
@@ -470,7 +479,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
                 <div>
                   <p className="text-[10px] font-semibold text-muted uppercase">P&L (auto)</p>
                   <p className={`text-sm font-mono font-bold ${liveCalc.pnl >= 0 ? 'text-success-500' : 'text-error-500'}`}>
-                    {formatCurrency(liveCalc.pnl)}
+                    {formatAccountCurrency(liveCalc.pnl)}
                   </p>
                 </div>
               </div>
@@ -524,7 +533,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
                 <div>
                   <p className="text-[10px] font-semibold text-muted uppercase">Potential P&L</p>
                   <p className="text-sm font-mono font-bold text-success-500">
-                    {form.take_profit && form.lot_size ? formatCurrency(liveCalc.potentialPnl) : '—'}
+                    {form.take_profit && form.lot_size ? formatAccountCurrency(liveCalc.potentialPnl) : '—'}
                   </p>
                 </div>
               </div>
@@ -681,6 +690,11 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
                 }} />
             </div>
             <div>
+              <label className={labelCls}>Estimated fees ({selectedAccount?.base_currency || 'account currency'})</label>
+              <input type="number" min="0" step="0.01" className={inputCls} value={form.fees ?? 0} onChange={event => update('fees', event.target.value ? Number(event.target.value) : 0)} />
+              <p className="mt-1 text-[10px] text-muted">Commission and financing costs are subtracted from estimated net P&amp;L.</p>
+            </div>
+            <div>
               <label className={labelCls}>Entry Date & Time *</label>
               <input type="datetime-local" className={inputCls}
                 value={form.entry_time ? form.entry_time.slice(0, 16) : ''} readOnly={form.capture_mode === 'live'} onChange={e => update('entry_time', e.target.value)} />
@@ -695,7 +709,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
           {suggestedSize != null && <p className="text-xs text-secondary">Estimated size: <strong>{suggestedSize} {selectedInstrument?.quantity_unit}</strong> at {selectedAccount?.risk_per_trade_pct}% risk of current {selectedAccount?.base_currency} balance.</p>}
           {selectedInstrument?.chart_symbol && <details><summary className="cursor-pointer text-xs text-orange-600">View TradingView chart</summary><div className="mt-2"><TradingViewChart symbol={selectedInstrument.chart_symbol} /></div></details>}
           <p className="text-xs text-muted">
-            Pips, P&L, outcome, and risk-to-reward are calculated automatically from your entry, exit, stop loss, and lot size.
+            P&amp;L and position size are estimates based on the instrument catalog and your conversion rate; verify broker contract values and actual costs. Fees are subtracted from net P&amp;L.
             Leave exit price empty to record an open trade — come back and fill it when you close the position.
           </p>
         </div>

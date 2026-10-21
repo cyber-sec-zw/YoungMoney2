@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   TrendingUp, BarChart3, BookOpen, Sparkles, Calendar, Target,
-  Flame, Shield, ArrowRight, Users, Zap, Award,
+  Flame, Shield, ArrowRight, Zap, Award,
   CheckCircle2, Star, ChevronRight, Activity, PenLine, Brain,
   ClipboardList, FlaskConical, ArrowRightCircle, ScrollText,
   CalendarClock, LayoutTemplate, Beaker, BookMarked, StickyNote,
   GraduationCap, CreditCard, ClipboardCheck, CandlestickChart,
-  Gauge, PieChart, Trophy, Swords, LayoutDashboard,
+  Gauge, PieChart, LayoutDashboard,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { ColorPaletteControl } from '@/components/ColorPaletteControl';
@@ -101,8 +101,6 @@ export function LandingPage({ onEnter }: { onEnter: () => void }) {
         { icon: BookMarked, title: 'Resources', desc: 'Build a curated library of books, videos, articles, courses, tools, and podcasts. Tag and search everything.' },
         { icon: StickyNote, title: 'Notes', desc: 'Freeform notes with tags and pinning. Capture ideas, observations, and reflections outside of formal journal entries.' },
         { icon: GraduationCap, title: 'Study Material', desc: 'Track your study progress across books, courses, video series, and articles. Monitor completion percentage and units.' },
-        { icon: Trophy, title: 'Overview', desc: 'Optional summary views for accountability partners.' },
-        { icon: Swords, title: 'Side-by-Side', desc: 'Compare selected performance metrics with a trading partner.' },
       ],
     },
     {
@@ -122,11 +120,11 @@ export function LandingPage({ onEnter }: { onEnter: () => void }) {
     },
   ];
 
-  const accountabilityFeatures = [
-    { icon: Users, title: 'Shared Visibility', desc: 'Your friend sees your trades. You see theirs. No hiding, no fudging numbers — just honesty.' },
-    { icon: Shield, title: 'Zero Pressure', desc: "This isn't a competition. Nobody wins by making the other feel bad. It's about showing up and being real." },
-    { icon: PenLine, title: 'Forced Reflection', desc: 'Every trade gets a journal entry. Every loss gets a lesson. Every win gets checked for luck vs skill.' },
-    { icon: Brain, title: 'Shared Learning', desc: "See what works for your partner. Adapt what helps. Discard what doesn't. Grow on each other's shoulders." },
+  const processFeatures = [
+    { icon: Shield, title: 'Private workspace', desc: 'Your trades, plans, notes, and attachments stay scoped to your account.' },
+    { icon: PenLine, title: 'Consistent reflection', desc: 'Capture the context behind a trade and review the decisions that shaped it.' },
+    { icon: Brain, title: 'Evidence-led learning', desc: 'Use your own recorded history to spot patterns and refine your process.' },
+    { icon: Target, title: 'Process over outcomes', desc: 'Track adherence and setup quality alongside results, not instead of them.' },
   ];
 
   const featureHighlights = [
@@ -158,7 +156,7 @@ export function LandingPage({ onEnter }: { onEnter: () => void }) {
           <div className="hidden md:flex items-center gap-1">
             <a href="#platform" className="btn-ghost text-sm">Platform</a>
             <a href="#features" className="btn-ghost text-sm">Features</a>
-            <a href="#accountability" className="btn-ghost text-sm">Accountability</a>
+            <a href="#practice" className="btn-ghost text-sm">Private practice</a>
             <a href="#how" className="btn-ghost text-sm">How It Works</a>
           </div>
           <div className="flex items-center gap-2">
@@ -357,8 +355,8 @@ export function LandingPage({ onEnter }: { onEnter: () => void }) {
         </div>
       </section>
 
-      {/* ─── ACCOUNTABILITY ─── */}
-      <section id="accountability" className="py-20 px-4 relative overflow-hidden">
+      {/* ─── PRIVATE PRACTICE ─── */}
+      <section id="practice" className="py-20 px-4 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-0 left-0 w-96 h-96 rounded-full bg-orange-500/5 blur-3xl" />
           <div className="absolute bottom-0 right-0 w-96 h-96 rounded-full bg-amber-500/5 blur-3xl" />
@@ -366,24 +364,22 @@ export function LandingPage({ onEnter }: { onEnter: () => void }) {
         <div className="relative max-w-5xl mx-auto" data-reveal>
           <div className="text-center mb-14">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 mb-4">
-              <Users size={14} className="text-orange-500" />
-              <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">Why two traders?</span>
+              <Shield size={14} className="text-orange-500" />
+              <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">A private trading practice</span>
             </div>
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight max-w-2xl mx-auto">
-              Accountability beats isolation.
+              Build consistency with honest records.
               <br />
-              <span className="text-gradient">Ego kills accounts.</span>
+              <span className="text-gradient">Learn from your own evidence.</span>
             </h2>
             <p className="mt-4 text-secondary max-w-xl mx-auto leading-relaxed">
-              Trading alone makes it easy to lie to yourself. Trading with a partner makes it
-              harder to hide — and easier to grow. This isn't about who's better. It's about
-              showing up, being honest, and not making bad decisions because someone else had a
-              better week.
+              Keep your journal private while making the review process structured. Record context,
+              risk, and decisions consistently so your own history can guide measured improvement.
             </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {accountabilityFeatures.map((f, i) => (
+            {processFeatures.map((f, i) => (
               <div key={i} data-reveal className="card card-hover p-6 flex gap-4">
                 <div className="flex-shrink-0 p-2.5 rounded-xl bg-orange-500/10 text-orange-500">
                   <f.icon size={22} />
@@ -401,8 +397,8 @@ export function LandingPage({ onEnter }: { onEnter: () => void }) {
             <div className="absolute top-4 left-4 text-6xl font-serif text-orange-500/20">"</div>
             <div className="absolute bottom-4 right-4 text-6xl font-serif text-orange-500/20 rotate-180">"</div>
             <p className="text-xl sm:text-2xl font-semibold leading-relaxed max-w-2xl mx-auto">
-              The goal isn't to beat your partner. The goal is to be better than
-              <span className="text-gradient"> yesterday's version of you</span> — with someone who keeps you honest.
+              The goal isn't to chase a number. The goal is to improve
+              <span className="text-gradient"> one recorded decision at a time.</span>
             </p>
           </div>
         </div>
@@ -422,7 +418,7 @@ export function LandingPage({ onEnter }: { onEnter: () => void }) {
               { step: '03', icon: Sparkles, title: 'Get AI insights', desc: 'Automatic pattern detection highlights your edge, your leaks, emotional blind spots, recurring mistakes, and best sessions — with period-over-period comparison.' },
               { step: '04', icon: Shield, title: 'Manage your risk', desc: 'Risk Guardian monitors daily loss, drawdown, and trade count in real time. Set your limits and get automatic stop-trading alerts.' },
               { step: '05', icon: FlaskConical, title: 'Test and learn', desc: 'Backtest strategies, forward-test in real time, document setups, track study progress, and build a resource library.' },
-              { step: '06', icon: Users, title: 'Review together', desc: "See your partner's trades and journal. Compare side by side. Learn from their wins. Avoid their mistakes. Repeat." },
+              { step: '06', icon: Target, title: 'Review your process', desc: 'Compare your plan with the decisions you recorded, identify recurring patterns, and choose one improvement to test.' },
             ].map((s, i) => (
               <div key={i} data-reveal className="card p-5 flex items-center gap-5 group hover:border-orange-500/30 transition-colors">
                 <div className="flex-shrink-0 w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-orange-700 text-white flex items-center justify-center font-bold text-lg shadow-lg shadow-orange-500/20 group-hover:scale-110 transition-transform">

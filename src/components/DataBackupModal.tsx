@@ -3,48 +3,12 @@ import { Archive, CheckCircle2, Download, FileUp, LoaderCircle, ShieldCheck } fr
 import { Modal } from '@/components/ui/Modal';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { RESTORE_ORDER, WORKSPACE_TABLES } from '@/lib/workspaceTables';
 
 const BACKUP_FORMAT = 'trade-journal-pro-backup';
 const BACKUP_VERSION = 1;
 
-const EXPORT_TABLES = [
-  'market_instruments',
-  'instrument_favorites',
-  'brokers',
-  'trading_accounts',
-  'trading_account_adjustments',
-  'trading_plans',
-  'trading_rules',
-  'pre_trade_checklist',
-  'trader_strategies',
-  'strategy_entry_models',
-  'strategy_checklist_items',
-  'trading_setups',
-  'risk_settings',
-  'goals',
-  'goal_templates',
-  'strategy_test_sessions',
-  'strategy_test_trades',
-  'trades',
-  'journal_entries',
-  'backtest_results',
-  'forward_trades',
-  'weekly_reviews',
-  'market_events',
-  'resources',
-  'notes',
-  'study_materials',
-  'charting_tools',
-] as const;
-
-const RESTORE_ORDER = [
-  'market_instruments', 'brokers', 'trading_plans', 'risk_settings', 'trader_strategies',
-  'strategy_entry_models', 'strategy_checklist_items', 'pre_trade_checklist', 'trading_rules',
-  'trading_accounts', 'trading_account_adjustments', 'trading_setups', 'goals', 'goal_templates',
-  'strategy_test_sessions', 'strategy_test_trades', 'trades', 'journal_entries', 'backtest_results',
-  'forward_trades', 'weekly_reviews', 'market_events', 'resources', 'notes', 'study_materials',
-  'charting_tools', 'instrument_favorites',
-];
+const EXPORT_TABLES = WORKSPACE_TABLES;
 
 interface BackupMedia {
   bucket: 'trading-media';
@@ -123,11 +87,13 @@ export function DataBackupModal({ open, onClose }: DataBackupModalProps) {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [backup, setBackup] = useState<TradingBackup | null>(null);
+  const [acceptPartialRestore, setAcceptPartialRestore] = useState(false);
 
   const currentProject = useMemo(projectHost, []);
   const sameOwner = !!user && backup?.ownerId === user.id;
   const sameProject = backup?.sourceProject === currentProject;
-  const canRestore = !!backup && sameOwner && sameProject && !busy;
+  const canRestore = !!backup && sameOwner && sameProject && !busy
+    && (!backup.unavailableTables.length || acceptPartialRestore);
   const recordCount = backup ? Object.entries(backup.data).filter(([table]) => table !== 'profiles').reduce((count, [, rows]) => count + rows.length, 0) : 0;
 
   const handleExport = async () => {
@@ -201,6 +167,7 @@ export function DataBackupModal({ open, onClose }: DataBackupModalProps) {
 
   const handleFile = async (file?: File) => {
     setBackup(null); setError(''); setMessage('');
+    setAcceptPartialRestore(false);
     if (!file) return;
     try {
       const parsed: unknown = JSON.parse(await file.text());
@@ -299,7 +266,7 @@ export function DataBackupModal({ open, onClose }: DataBackupModalProps) {
             <p className="mt-1 text-secondary">{recordCount} records · {backup.media.length} private attachments</p>
             {!sameOwner && <p className="mt-2 text-amber-600">This backup belongs to a different sign-in. Sign into its original account to restore it.</p>}
             {!sameProject && <p className="mt-1 text-amber-600">This backup came from a different database and cannot safely restore linked records here.</p>}
-            {!!backup.unavailableTables.length && <p className="mt-1 text-amber-600">Partial backup: unavailable tables are listed in the file and will stay missing.</p>}
+            {!!backup.unavailableTables.length && <div className="mt-2 space-y-2 text-amber-600"><p>Partial backup: unavailable collections will remain missing after restore.</p><label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={acceptPartialRestore} onChange={event => setAcceptPartialRestore(event.target.checked)} /><span>I understand this backup is incomplete and want to restore its available data.</span></label></div>}
             {canRestore && <button type="button" onClick={handleRestore} className="btn-primary mt-3" disabled={busy}><Archive size={15} /> Restore missing records</button>}
           </div>}
         </section>

@@ -35,6 +35,23 @@ export interface TradeChecklistSnapshot {
   source_scope?: 'plan' | 'strategy' | 'entry_model' | 'legacy';
 }
 
+export interface TradeCalculationSnapshot {
+  instrument_id: string;
+  symbol: string;
+  asset_class: InstrumentAssetClass;
+  base_currency: string | null;
+  quote_currency: string;
+  account_currency: string;
+  price_increment: number;
+  pip_size: number | null;
+  price_precision: number;
+  contract_multiplier: number;
+  tick_value: number;
+  quantity_unit: string;
+  conversion_rate: number;
+  calculated_at: string;
+}
+
 export type TradeDirection = 'long' | 'short';
 export type TradeOutcome = 'win' | 'loss' | 'breakeven' | null;
 export type TradeStatus = 'open' | 'closed';
@@ -123,6 +140,9 @@ export interface Trade {
   instrument_id?: string | null;
   stop_loss?: number | null;
   conversion_rate?: number | null;
+  fees?: number | null;
+  calculation_snapshot?: TradeCalculationSnapshot | null;
+  risk_override_reason?: string | null;
   example_values_confirmed?: boolean;
   entry_price_confirmed_actual?: boolean;
   capture_mode?: 'live' | 'historical' | 'legacy';

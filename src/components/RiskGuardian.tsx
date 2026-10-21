@@ -1,94 +1,47 @@
 import { useMemo } from 'react';
 import { Shield, AlertTriangle, TrendingDown, Activity, Gauge, Target, Zap, AlertOctagon } from 'lucide-react';
-import type { Trade, RiskSettings } from '@/lib/types';
-import { formatCurrency, formatPercent } from '@/lib/utils';
-import { format, isToday, parseISO } from 'date-fns';
+import type { Trade, RiskSettings, TradingAccount, TradingPlan } from '@/lib/types';
+import { formatPercent } from '@/lib/utils';
+import { calculateRiskMetrics } from '@/lib/riskMetrics';
 
 interface RiskGuardianProps {
   trades: Trade[];
   settings: RiskSettings | null;
+  account: TradingAccount | null;
+  plan: TradingPlan | null;
   onConfigure: () => void;
 }
 
-export function RiskGuardian({ trades, settings, onConfigure }: RiskGuardianProps) {
+export function RiskGuardian({ trades, settings, account, plan, onConfigure }: RiskGuardianProps) {
   const riskData = useMemo(() => {
-    const today = new Date();
-    const todayTrades = trades.filter(t => {
-      if (t.status !== 'closed') return false;
-      return isToday(parseISO(t.entry_time));
-    });
-
-    const todayPnl = todayTrades.reduce((s, t) => s + t.pnl, 0);
-    const todayTradeCount = todayTrades.length;
-
-    // All trades today including open ones for trade count
-    const allTodayTrades = trades.filter(t => isToday(parseISO(t.entry_time)));
-    const todayTradeCountAll = allTodayTrades.length;
-
-    const balance = settings?.account_balance ?? 10000;
-    const maxDailyLossPct = settings?.max_daily_loss_pct ?? 3.0;
-    const maxDailyTrades = settings?.max_daily_trades ?? 5;
-    const maxRiskPerTrade = settings?.max_risk_per_trade_pct ?? 1.0;
-    const maxDrawdownPct = settings?.max_drawdown_pct ?? 10.0;
-    const dailyLossLimitAmount = settings?.daily_loss_limit_amount;
-
-    const dailyLossLimitDollar = dailyLossLimitAmount ?? (balance * maxDailyLossPct / 100);
-    const dailyLossUsed = Math.abs(Math.min(todayPnl, 0));
-    const dailyLossRemaining = dailyLossLimitDollar - dailyLossUsed;
-    const dailyLossPctUsed = dailyLossLimitDollar > 0 ? (dailyLossUsed / dailyLossLimitDollar) * 100 : 0;
-
-    // Drawdown calculation
-    const sorted = [...trades]
-      .filter(t => t.status === 'closed')
-      .sort((a, b) => new Date(a.entry_time).getTime() - new Date(b.entry_time).getTime());
-
-    let running = 0;
-    let peak = 0;
-    let maxDrawdown = 0;
-    let currentDrawdown = 0;
-    sorted.forEach(t => {
-      running += t.pnl;
-      if (running > peak) peak = running;
-      const dd = peak - running;
-      if (dd > maxDrawdown) maxDrawdown = dd;
-      currentDrawdown = peak - running;
-    });
-    const computedMaxDrawdownPct = balance > 0 ? (maxDrawdown / balance) * 100 : 0;
-    const currentDrawdownPct = balance > 0 ? (currentDrawdown / balance) * 100 : 0;
-
-    // Risk per trade from today's trades
-    const todayRiskPcts = todayTrades
-      .filter(t => t.risk_percent != null)
-      .map(t => t.risk_percent as number);
-    const maxRiskUsedToday = todayRiskPcts.length > 0 ? Math.max(...todayRiskPcts) : 0;
-
-    // Status determination
-    let status: 'safe' | 'warning' | 'danger' = 'safe';
-    if (dailyLossPctUsed >= 100 || todayTradeCountAll >= maxDailyTrades) {
-      status = 'danger';
-    } else if (dailyLossPctUsed >= 70 || todayTradeCountAll >= maxDailyTrades - 1 || currentDrawdownPct >= maxDrawdownPct * 0.8) {
-      status = 'warning';
-    }
-
-    return {
-      todayPnl,
-      todayTradeCount: todayTradeCountAll,
-      maxDailyTrades,
-      dailyLossLimitDollar,
-      dailyLossUsed,
-      dailyLossRemaining,
-      dailyLossPctUsed,
-      maxRiskPerTrade,
-      maxRiskUsedToday,
-      maxDrawdown,
-      maxDrawdownPct: computedMaxDrawdownPct,
-      currentDrawdown,
-      currentDrawdownPct,
-      maxDrawdownPctLimit: maxDrawdownPct,
-      status,
-      balance,
+    if (!account) return null;
+    const strictest = (values: (number | null | undefined)[], fallback: number) => {
+      const configured = values.filter((value): value is number => value != null && Number.isFinite(value) && value > 0);
+      return configured.length ? Math.min(...configured) : fallback;
     };
-  }, [trades, settings]);
+    const maxDailyLossPct = strictest([account.daily_loss_limit_pct, plan?.max_daily_loss_pct, settings?.max_daily_loss_pct], 3);
+    const maxRiskPerTradePct = strictest([account.risk_per_trade_pct, plan?.max_risk_per_trade_pct, settings?.max_risk_per_trade_pct], 1);
+    const maxDrawdownPct = strictest([plan?.max_drawdown_pct, settings?.max_drawdown_pct], 10);
+    const maxDailyLossAmount = account.base_currency === 'USD' ? settings?.daily_loss_limit_amount : null;
+    return calculateRiskMetrics(trades, {
+      accountId: account.id,
+      accountBalance: account.balance,
+      timeZone: account.challenge_reset_timezone || 'UTC',
+      maxDailyLossPct,
+      maxDailyLossAmount,
+      maxDailyTrades: settings?.max_daily_trades ?? 5,
+      maxRiskPerTradePct,
+      maxDrawdownPct,
+    });
+  }, [trades, settings, account, plan]);
+
+  const formatMoney = (value: number) => new Intl.NumberFormat(undefined, {
+    style: 'currency', currency: account?.base_currency || 'USD', maximumFractionDigits: 2,
+  }).format(value);
+
+  if (!account || !riskData) {
+    return <div className="card p-5 text-sm text-secondary">Select a single account to view account-specific risk metrics.</div>;
+  }
 
   const statusConfig = {
     safe: {
@@ -113,7 +66,7 @@ export function RiskGuardian({ trades, settings, onConfigure }: RiskGuardianProp
       border: 'border-error-500/20',
       barColor: 'bg-error-500',
       icon: AlertOctagon,
-      label: 'Limit Reached — Stop Trading',
+      label: 'Limit Reached — Review Before Next Entry',
     },
   };
 
@@ -150,10 +103,10 @@ export function RiskGuardian({ trades, settings, onConfigure }: RiskGuardianProp
           <AlertOctagon size={18} className="text-error-500 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-error-500">
-              {riskData.dailyLossPctUsed >= 100 ? 'Daily loss limit reached' : 'Daily trade limit reached'}
+              {riskData.dailyLossPctUsed >= 100 ? 'Daily loss limit reached' : 'Daily entry limit reached'}
             </p>
             <p className="text-xs text-secondary mt-0.5">
-              You've hit your configured limit. The best traders know when to stop. Consider stepping away and reviewing your trades tomorrow.
+              This is an advisory based on recorded trades, not a broker-side lock. Review the account rules before considering another entry.
             </p>
           </div>
         </div>
@@ -167,7 +120,7 @@ export function RiskGuardian({ trades, settings, onConfigure }: RiskGuardianProp
             <span className="text-xs font-semibold text-secondary uppercase tracking-wide">Daily Loss Limit</span>
           </div>
           <span className="text-xs font-mono font-bold">
-            {formatCurrency(riskData.dailyLossUsed)} / {formatCurrency(riskData.dailyLossLimitDollar)}
+            {formatMoney(riskData.dailyLossUsed)} / {formatMoney(riskData.dailyLossLimitAmount)}
           </span>
         </div>
         <div className="h-3 rounded-full bg-secondary overflow-hidden relative">
@@ -182,7 +135,7 @@ export function RiskGuardian({ trades, settings, onConfigure }: RiskGuardianProp
         <div className="flex items-center justify-between mt-1.5">
           <span className={`text-xs font-semibold ${riskData.dailyLossRemaining > 0 ? 'text-success-500' : 'text-error-500'}`}>
             {riskData.dailyLossRemaining > 0
-              ? `${formatCurrency(riskData.dailyLossRemaining)} remaining today`
+              ? `${formatMoney(riskData.dailyLossRemaining)} remaining today`
               : 'Limit exceeded'}
           </span>
           <span className="text-xs text-muted">{formatPercent(riskData.dailyLossPctUsed)} used</span>
@@ -201,6 +154,7 @@ export function RiskGuardian({ trades, settings, onConfigure }: RiskGuardianProp
             {riskData.todayTradeCount}
             <span className="text-xs text-muted"> / {riskData.maxDailyTrades}</span>
           </p>
+          <p className="text-[10px] text-muted">{riskData.openTradeCount} currently open</p>
           <div className="h-1 rounded-full bg-secondary mt-2 overflow-hidden">
             <div
               className={`h-full rounded-full ${riskData.todayTradeCount >= riskData.maxDailyTrades ? 'bg-error-500' : riskData.todayTradeCount >= riskData.maxDailyTrades - 1 ? 'bg-warning-500' : 'bg-brand-500'}`}
@@ -216,7 +170,7 @@ export function RiskGuardian({ trades, settings, onConfigure }: RiskGuardianProp
             <span className="text-[10px] font-semibold text-muted uppercase">Today P&L</span>
           </div>
           <p className={`text-lg font-bold font-mono ${riskData.todayPnl >= 0 ? 'text-success-500' : 'text-error-500'}`}>
-            {formatCurrency(riskData.todayPnl)}
+            {formatMoney(riskData.todayPnl)}
           </p>
         </div>
 
@@ -227,9 +181,9 @@ export function RiskGuardian({ trades, settings, onConfigure }: RiskGuardianProp
             <span className="text-[10px] font-semibold text-muted uppercase">Max Risk / Trade</span>
           </div>
           <p className="text-lg font-bold font-mono">
-            {formatPercent(riskData.maxRiskPerTrade)}
+            {formatPercent(riskData.maxRiskPerTradePct)}
           </p>
-          <p className={`text-[10px] mt-0.5 ${riskData.maxRiskUsedToday > riskData.maxRiskPerTrade ? 'text-error-500 font-semibold' : 'text-muted'}`}>
+          <p className={`text-[10px] mt-0.5 ${riskData.maxRiskUsedToday > riskData.maxRiskPerTradePct ? 'text-error-500 font-semibold' : 'text-muted'}`}>
             {riskData.maxRiskUsedToday > 0 ? `Today max: ${formatPercent(riskData.maxRiskUsedToday)}` : 'No risk data today'}
           </p>
         </div>
@@ -250,9 +204,7 @@ export function RiskGuardian({ trades, settings, onConfigure }: RiskGuardianProp
       </div>
 
       {/* Today's date */}
-      <p className="mt-4 text-[10px] text-muted text-center">
-        {format(new Date(), 'EEEE, MMMM d, yyyy')}
-      </p>
+      <p className="mt-4 text-[10px] text-muted text-center">{account.name} · {account.base_currency} · Reset timezone: {riskData.timeZone}</p>
     </div>
   );
 }

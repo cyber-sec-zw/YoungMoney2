@@ -1,4 +1,4 @@
-import type { MarketInstrument } from '@/lib/types';
+import type { MarketInstrument, TradeCalculationSnapshot } from './types.ts';
 
 export const SIZE_PRESETS: Record<string, number[]> = {
   fx: [0.01, 0.05, 0.1, 0.25, 0.5, 1],
@@ -20,10 +20,43 @@ export function instrumentPnl(
   quantity: number,
   conversionRate = 1,
 ): number {
+  if (![entry, exit, quantity, conversionRate, instrument.price_increment, instrument.contract_multiplier].every(Number.isFinite)
+    || instrument.price_increment <= 0 || instrument.contract_multiplier <= 0 || quantity <= 0 || conversionRate <= 0) return Number.NaN;
   const signedMove = direction === 'long' ? exit - entry : entry - exit;
   const ticksMoved = signedMove / instrument.price_increment;
   const tickValue = instrument.tick_value ?? instrument.price_increment * instrument.contract_multiplier;
+  if (!Number.isFinite(tickValue) || tickValue <= 0) return Number.NaN;
   return ticksMoved * tickValue * quantity * conversionRate;
+}
+
+export function createTradeCalculationSnapshot(
+  instrument: MarketInstrument,
+  accountCurrency: string,
+  conversionRate = 1,
+  calculatedAt = new Date().toISOString(),
+): TradeCalculationSnapshot | null {
+  const tickValue = instrument.tick_value ?? instrument.price_increment * instrument.contract_multiplier;
+  if (!accountCurrency || !Number.isFinite(conversionRate) || conversionRate <= 0
+    || !Number.isFinite(instrument.price_increment) || instrument.price_increment <= 0
+    || !Number.isFinite(instrument.contract_multiplier) || instrument.contract_multiplier <= 0
+    || !Number.isFinite(tickValue) || tickValue <= 0) return null;
+
+  return {
+    instrument_id: instrument.id,
+    symbol: instrument.symbol,
+    asset_class: instrument.asset_class,
+    base_currency: instrument.base_currency,
+    quote_currency: instrument.quote_currency,
+    account_currency: accountCurrency,
+    price_increment: instrument.price_increment,
+    pip_size: instrument.pip_size ?? null,
+    price_precision: instrument.price_precision,
+    contract_multiplier: instrument.contract_multiplier,
+    tick_value: tickValue,
+    quantity_unit: instrument.quantity_unit,
+    conversion_rate: conversionRate,
+    calculated_at: calculatedAt,
+  };
 }
 
 export function calculatePositionSize(
@@ -35,13 +68,17 @@ export function calculatePositionSize(
   conversionRate: number,
 ): number | null {
   const distance = Math.abs(entry - stop);
-  if (!distance || !instrument.contract_multiplier || !conversionRate || accountBalance <= 0 || riskPercent <= 0) return null;
+  if (![entry, stop, conversionRate, accountBalance, riskPercent, instrument.price_increment, instrument.contract_multiplier].every(Number.isFinite)
+    || !distance || instrument.price_increment <= 0 || instrument.contract_multiplier <= 0 || conversionRate <= 0 || accountBalance <= 0 || riskPercent <= 0) return null;
   const riskBudget = accountBalance * riskPercent / 100;
   const tickValue = instrument.tick_value ?? instrument.price_increment * instrument.contract_multiplier;
+  if (!Number.isFinite(tickValue) || tickValue <= 0) return null;
   const riskPerQuantity = distance / instrument.price_increment * tickValue * conversionRate;
   if (!Number.isFinite(riskPerQuantity) || riskPerQuantity <= 0) return null;
   const raw = riskBudget / riskPerQuantity;
-  return instrument.quantity_unit === 'lots' ? Number(raw.toFixed(2)) : Number(raw.toFixed(4));
+  const precision = instrument.quantity_unit === 'lots' ? 2 : 4;
+  const scale = 10 ** precision;
+  return Math.floor((raw + Number.EPSILON) * scale) / scale;
 }
 
 export function roundInstrumentPrice(instrument: MarketInstrument, value: number): number {

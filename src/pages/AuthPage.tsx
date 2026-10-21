@@ -79,8 +79,8 @@ export function AuthPage({ onBack }: { onBack?: () => void }) {
               <span className="text-orange-300">radical honesty.</span>
             </h2>
             <p className="mt-4 text-base text-white/70 leading-relaxed">
-              A trading journal built for two. Log every trade, review every decision,
-              and hold each other accountable — without the pressure of a leaderboard.
+              A private trading journal to log every trade, review every decision,
+              and build a consistent process without sharing your records.
             </p>
 
             <div className="mt-10 grid grid-cols-2 gap-4">

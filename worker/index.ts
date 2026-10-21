@@ -1,4 +1,5 @@
 /// <reference types="@cloudflare/workers-types" />
+import { WORKSPACE_TABLES } from '../src/lib/workspaceTables';
 
 export interface Env {
   DB: D1Database;
@@ -9,7 +10,7 @@ export interface Env {
 }
 
 const encoder = new TextEncoder();
-const ownedTables = new Set(['trades', 'journal_entries', 'trader_strategies', 'strategy_entry_models', 'strategy_checklist_items', 'pre_trade_checklist', 'trading_plans', 'risk_settings', 'goals', 'backtest_results', 'forward_trades', 'trading_rules', 'market_sessions', 'trading_setups', 'strategy_test_sessions', 'strategy_test_trades', 'resources', 'notes', 'study_materials', 'brokers', 'charting_tools', 'weekly_reviews', 'goal_templates', 'trading_accounts', 'trading_account_adjustments', 'instrument_favorites', 'market_instruments']);
+const ownedTables = new Set<string>(WORKSPACE_TABLES);
 const publicTables = new Set(['provider_catalog', 'provider_offerings', 'prop_firm_rule_versions', 'provider_change_reviews']);
 
 function response(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } }); }
@@ -204,7 +205,7 @@ async function listSupabaseMedia(config: { url: string; key: string }, owner: st
     const entries = await result.json() as { id?: string | null; name?: string; metadata?: { mimetype?: string } | null }[];
     const page = entries.filter(entry => entry.name && entry.id).map(entry => ({
       id: entry.id!,
-      name: `${owner}/${entry.name}`,
+      name: entry.name!,
       metadata: { mimetype: entry.metadata?.mimetype || 'application/octet-stream' },
     }));
     files.push(...page);
