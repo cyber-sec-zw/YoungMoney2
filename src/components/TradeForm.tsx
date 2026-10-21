@@ -75,6 +75,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
   const [exampleConfirmed, setExampleConfirmed] = useState(initial?.example_values_confirmed ?? true);
   const [checklistSnapshot, setChecklistSnapshot] = useState<TradeChecklistSnapshot[]>([]);
   const [checklistOverrideReason, setChecklistOverrideReason] = useState<string | null>(null);
+  const [riskOverrideReason, setRiskOverrideReason] = useState(initial?.risk_override_reason || '');
   const [saving, setSaving] = useState(false);
   const [mediaUploads, setMediaUploads] = useState({ screenshot: false, voice: false });
   const [error, setError] = useState<string | null>(null);
@@ -177,7 +178,12 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
   const formatAccountCurrency = (value: number) => new Intl.NumberFormat(undefined, {
     style: 'currency', currency: selectedAccount?.base_currency || 'USD', maximumFractionDigits: 2,
   }).format(value);
-  const effectiveRiskPercent = selectedPlan?.max_risk_per_trade_pct ?? selectedAccount?.risk_per_trade_pct ?? null;
+  const configuredRiskLimits = [
+    selectedPlan?.max_risk_per_trade_pct,
+    selectedAccount?.risk_per_trade_pct,
+    userRiskSettings?.max_risk_per_trade_pct,
+  ].filter((value): value is number => value != null && Number.isFinite(value) && value > 0);
+  const effectiveRiskPercent = configuredRiskLimits.length ? Math.min(...configuredRiskLimits) : null;
   const needsConversion = !!selectedInstrument && !!selectedAccount && selectedInstrument.quote_currency !== selectedAccount.base_currency;
   const conversionRate = needsConversion ? Number(form.conversion_rate) : 1;
   const isExamplePrice = examplePriceIsUnconfirmed(form.entry_price, selectedInstrument);
@@ -186,6 +192,11 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
   const suggestedSize = selectedInstrument && selectedAccount && effectiveRiskPercent != null && form.entry_price && stopLoss && Number(stopLoss) && conversionRate > 0
     ? calculatePositionSize(selectedInstrument, effectiveBalance, effectiveRiskPercent, form.entry_price, Number(stopLoss), conversionRate)
     : null;
+  const estimatedRiskAmount = selectedInstrument && selectedAccount && form.entry_price && Number(stopLoss) && form.lot_size
+    ? Math.abs(instrumentPnl(selectedInstrument, form.direction, form.entry_price, Number(stopLoss), form.lot_size, conversionRate || 1)) + Math.max(0, Number(form.fees) || 0)
+    : null;
+  const estimatedRiskPercent = estimatedRiskAmount != null && effectiveBalance > 0 ? estimatedRiskAmount / effectiveBalance * 100 : null;
+  const riskLimitExceeded = effectiveRiskPercent != null && estimatedRiskPercent != null && estimatedRiskPercent > effectiveRiskPercent;
 
   useEffect(() => {
     if (initial || form.pair || !instruments.length || favoritesLoading) return;
@@ -336,6 +347,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
       stop_loss: stopLoss ? Number(stopLoss) : null,
       conversion_rate: needsConversion ? conversionRate : 1,
       fees: Math.max(0, Number(form.fees) || 0),
+        risk_override_reason: riskLimitExceeded ? riskOverrideReason.trim() || null : null,
       calculation_snapshot: selectedInstrument && selectedAccount
         ? createTradeCalculationSnapshot(selectedInstrument, selectedAccount.base_currency, conversionRate || 1)
         : null,
@@ -747,7 +759,12 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
               <label className={labelCls}>Risk %</label>
               <input type="number" step="0.1" className={inputCls} placeholder="1.0"
                 value={form.risk_percent ?? ''} onChange={e => update('risk_percent', e.target.value ? parseFloat(e.target.value) : null)} />
-              {selectedAccount && selectedPlan?.max_risk_per_trade_pct != null && selectedAccount.risk_per_trade_pct > selectedPlan.max_risk_per_trade_pct && <p className="mt-1 text-[11px] text-amber-600">Plan cap is {selectedPlan.max_risk_per_trade_pct}%; account default is {selectedAccount.risk_per_trade_pct}%. Sizing uses the plan cap.</p>}
+              {selectedAccount && effectiveRiskPercent != null && <p className="mt-1 text-[11px] text-muted">Strictest configured account, plan, and workspace limit: {effectiveRiskPercent}%.</p>}
+                      {riskLimitExceeded && <div role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+                        <p className="font-semibold">Estimated stop risk is {estimatedRiskPercent?.toFixed(2)}%, above the {effectiveRiskPercent}% advisory limit.</p>
+                        <p className="mt-1">This does not block recording an executed trade. Add a note if you intentionally accepted this risk.</p>
+                        <input className="input-field mt-2" value={riskOverrideReason} onChange={event => setRiskOverrideReason(event.target.value)} placeholder="Optional override reason" aria-label="Risk limit override reason" />
+                      </div>}
             </div>
             <div>
               <label className={labelCls}>Trading account</label>
