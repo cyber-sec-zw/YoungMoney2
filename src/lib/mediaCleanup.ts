@@ -37,12 +37,13 @@ export async function deleteOwnedMedia(ownerId: string, adapter: MediaCleanupAda
   await deleteBatches(supabasePaths, adapter.removeSupabase);
 
   let cursor: string | undefined;
-  do {
+  let truncated = true;
+  while (truncated) {
     const page = await adapter.listR2Page(`${ownerId}/`, cursor);
     page.keys.forEach(path => assertOwnedPath(path, ownerId));
     await deleteBatches(page.keys, adapter.deleteR2);
     cursor = page.cursor;
     if (page.truncated && !cursor) throw new Error('R2 media listing did not provide a continuation cursor.');
-    if (!page.truncated) break;
-  } while (true);
+    truncated = page.truncated;
+  }
 }

@@ -40,11 +40,11 @@ The token is hidden while typed and is not saved in shell history. The script li
 
 The project creation request uses the Supabase Free organization plan. If Supabase requires billing information or the organization has reached its free-project limit, stop and resolve that in the Supabase dashboard; do not switch plans without reviewing the cost.
 
-Supabase currently lists 1 GB file storage and 5 GB egress on Free; verify the current quotas before relying on them. Free projects may pause after one week of inactivity, temporarily interrupting media access until resumed. Keep an encrypted export using **Data Backup & Restore** and monitor Storage usage. The application enforces a 15 MiB maximum per file. Existing external media URLs remain unchanged; legacy Worker/R2 references continue to fall back to R2 only if that binding still exists.
+Supabase currently lists 1 GB file storage and 5 GB egress on Free; verify the current quotas before relying on them. Free projects may pause after one week of inactivity, temporarily interrupting media access until resumed. Export using **Data Backup & Restore**, then encrypt the downloaded JSON yourself before storing it; the application does not encrypt the backup file. Monitor Storage usage. The application enforces a 15 MiB maximum per file. Existing external media URLs remain unchanged; legacy Worker/R2 references continue to fall back to R2 only if that binding still exists.
 
 ## Administrator account
 
-After deploying and applying the migration, provision the owner account once with `scripts/provision-cloudflare-admin.mjs` using secure environment-variable injection for `ADMIN_EMAIL` and `ADMIN_PASSWORD` (do not type credentials into a command saved in shell history). This writes the initial admin account and its private `Young-Money-Fx` playbook to remote D1, then verifies sign-in against the deployed Worker. The invite code is only for creating participant accounts; use the account password to sign in. Change the administrator's initial password immediately after first login. Member administration is in **Account Settings**.
+After deploying and applying the migration, provision the owner account with `scripts/provision-cloudflare-admin.mjs` using secure environment-variable injection for `ADMIN_EMAIL` and `ADMIN_PASSWORD` (do not type credentials into a command saved in shell history). The script seeds the admin's `Young-Money-Fx` and `Young Money 2.0` playbooks idempotently, then verifies sign-in against the deployed Worker. The invite code is only for creating participant accounts; sign in using the admin email and password. Change the initial password immediately after first login. Member administration is in **Account Settings**; deletion removes D1 records and private Supabase/R2 media and cannot be undone.
 
 The app ships with a source-linked provider directory so broker selection works before any catalogue records are seeded into D1. The broker entries are candidates, not regional availability guarantees; verify the provider's legal entity and account type for the trader's location. Prop-firm rule snapshots link to official pages and carry a research date. Unknown or account-specific terms are left unknown, and account snapshots are informational only—not compliance checks or automatic enforcement.
 
@@ -62,11 +62,11 @@ Before inviting everyone, create two test accounts and verify:
 - One account cannot read or update the other account's records by using the app.
 - A downloaded backup can be read, and a restore skips records that already exist.
 
-The app's static instrument catalog is illustrative. Verify instrument contract details with the broker before using calculator estimates for live decisions.
+The app's static instrument catalog is illustrative and does not provide live quotes. Calculator P&L, conversion, fees, position sizing, and risk are estimates based on entered/catalog values; verify contract details and conversion with the broker. Risk warnings are advisory only and do not block or control broker orders. Analytics are account-scoped so currencies are not combined.
 
 ## Backup and recovery
 
-Open the profile menu and choose **Data Backup & Restore**. Export a backup at least weekly and before any deployment that changes the data model. Keep it outside the hosted app and avoid sending it through public channels: it can contain private notes and trade data.
+Open the profile menu and choose **Data Backup & Restore**. Export a backup at least weekly and before any deployment that changes the data model. The downloaded JSON is plaintext and can contain private notes and trade data; encrypt it yourself, store it outside the hosted app, and do not send it through public channels.
 
 Restore adds missing rows and attachments; it does not replace existing rows or delete records. Restore requires the same account and deployment hostname. Test one restore before depending on this process. This user-operated export is not a substitute for provider-level backup or point-in-time recovery.
 
