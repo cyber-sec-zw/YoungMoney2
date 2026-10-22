@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Save, X, Calculator, TrendingUp, TrendingDown, Zap, ChevronRight, ChevronLeft, CheckCircle2, Target, Brain, AlertTriangle, Clock, CheckCircle, ListChecks, Camera, Lock, Star } from 'lucide-react';
-import type { Trade, TradeInput, TradeDirection, TradeSession, AccountType, EmotionalState, TradeStatus, TradeChecklistSnapshot } from '@/lib/types';
+import type { Trade, TradeInput, TradeDirection, TradeSession, AccountType, EmotionalState, TradeStatus, TradeChecklistSnapshot, TradeCalculationSnapshot } from '@/lib/types';
 import { calcPips, calcPnl, formatPips, getInstrumentType } from '@/lib/utils';
 import { BROKER_SUGGESTIONS, LESSON_SUGGESTIONS } from '@/lib/suggestions';
 import { useChecklist, useStrategies, useStrategyChecklist, useStrategyEntryModels, useTradingPlans, useSetups, useMarketInstruments, useTradingAccounts, useInstrumentFavorites, useTrades, useTradingAccountAdjustments, useRiskSettings } from '@/hooks/useData';
@@ -12,7 +12,7 @@ import { PreTradeChecklist } from './PreTradeChecklist';
 import { EntitySelect } from './EntitySelect';
 import { InstrumentPicker } from './InstrumentPicker';
 import { TradingViewChart } from './TradingViewChart';
-import { calculatePositionSize, createTradeCalculationSnapshot, defaultTradeLevels, distancePresets, examplePriceIsUnconfirmed, instrumentDistanceLabel, instrumentPnl, priceAtDistance, SIZE_PRESETS } from '@/lib/instrumentMath';
+import { calculatePositionSize, createTradeCalculationSnapshot, defaultTradeLevels, distancePresets, examplePriceIsUnconfirmed, instrumentDistanceLabel, instrumentPnl, instrumentPnlFromSnapshot, priceAtDistance, SIZE_PRESETS } from '@/lib/instrumentMath';
 import { setupQualityFromChecklist } from '@/lib/setupQuality';
 
 interface TradeFormProps {
@@ -175,6 +175,21 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
   ];
   const selectedAccount = accounts.find(a => a.id === form.account_id) || null;
   const selectedPlan = plans.find(plan => plan.id === form.plan_id) || null;
+  const needsConversion = !!selectedInstrument && !!selectedAccount && selectedInstrument.quote_currency !== selectedAccount.base_currency;
+  const conversionRate = needsConversion ? Number(form.conversion_rate) : 1;
+  const reusableCalculationSnapshot: TradeCalculationSnapshot | null = initial?.calculation_snapshot
+    && selectedInstrument?.id === initial.calculation_snapshot.instrument_id
+    && selectedInstrument.symbol === form.pair
+    && selectedAccount?.base_currency === initial.calculation_snapshot.account_currency
+    && conversionRate === initial.calculation_snapshot.conversion_rate
+      ? initial.calculation_snapshot
+      : null;
+  const calculateSelectedInstrumentPnl = (direction: TradeDirection, entry: number, exit: number, quantity: number) =>
+    reusableCalculationSnapshot
+      ? instrumentPnlFromSnapshot(reusableCalculationSnapshot, direction, entry, exit, quantity)
+      : selectedInstrument
+        ? instrumentPnl(selectedInstrument, direction, entry, exit, quantity, conversionRate || 1)
+        : Number.NaN;
   const formatAccountCurrency = (value: number) => new Intl.NumberFormat(undefined, {
     style: 'currency', currency: selectedAccount?.base_currency || 'USD', maximumFractionDigits: 2,
   }).format(value);
@@ -184,16 +199,14 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
     userRiskSettings?.max_risk_per_trade_pct,
   ].filter((value): value is number => value != null && Number.isFinite(value) && value > 0);
   const effectiveRiskPercent = configuredRiskLimits.length ? Math.min(...configuredRiskLimits) : null;
-  const needsConversion = !!selectedInstrument && !!selectedAccount && selectedInstrument.quote_currency !== selectedAccount.base_currency;
-  const conversionRate = needsConversion ? Number(form.conversion_rate) : 1;
   const isExamplePrice = examplePriceIsUnconfirmed(form.entry_price, selectedInstrument);
   const sizePresets = selectedInstrument ? SIZE_PRESETS[selectedInstrument.asset_class] || SIZE_PRESETS.custom : SIZE_PRESETS.fx;
   const effectiveBalance = selectedAccount ? selectedAccount.balance + accountTrades.filter(t => t.account_id === selectedAccount.id && t.status === 'closed').reduce((sum, t) => sum + t.pnl, 0) + adjustments.filter(a => a.account_id === selectedAccount.id).reduce((sum, a) => sum + a.amount, 0) : 0;
   const suggestedSize = selectedInstrument && selectedAccount && effectiveRiskPercent != null && form.entry_price && stopLoss && Number(stopLoss) && conversionRate > 0
-    ? calculatePositionSize(selectedInstrument, effectiveBalance, effectiveRiskPercent, form.entry_price, Number(stopLoss), conversionRate)
+    ? calculatePositionSize(selectedInstrument, effectiveBalance, effectiveRiskPercent, form.entry_price, Number(stopLoss), conversionRate, Math.max(0, Number(form.fees) || 0))
     : null;
   const estimatedRiskAmount = selectedInstrument && selectedAccount && form.entry_price && Number(stopLoss) && form.lot_size
-    ? Math.abs(instrumentPnl(selectedInstrument, form.direction, form.entry_price, Number(stopLoss), form.lot_size, conversionRate || 1)) + Math.max(0, Number(form.fees) || 0)
+    ? Math.abs(calculateSelectedInstrumentPnl(form.direction, form.entry_price, Number(stopLoss), form.lot_size)) + Math.max(0, Number(form.fees) || 0)
     : null;
   const estimatedRiskPercent = estimatedRiskAmount != null && effectiveBalance > 0 ? estimatedRiskAmount / effectiveBalance * 100 : null;
   const riskLimitExceeded = effectiveRiskPercent != null && estimatedRiskPercent != null && estimatedRiskPercent > effectiveRiskPercent;
@@ -227,7 +240,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
     }));
   };
 
-  const liveCalc = useMemo(() => {
+  const liveCalc = (() => {
     const entry = form.entry_price;
     const exit = form.exit_price;
     const tp = form.take_profit;
@@ -247,36 +260,35 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
 
     if (entry != null && exit != null && pair) {
       pips = selectedInstrument
-        ? (direction === 'long' ? exit - entry : entry - exit) / (selectedInstrument.asset_class === 'fx' && selectedInstrument.pip_size ? selectedInstrument.pip_size : selectedInstrument.price_increment)
+        ? (direction === 'long' ? exit - entry : entry - exit) / ((reusableCalculationSnapshot?.asset_class || selectedInstrument.asset_class) === 'fx' && (reusableCalculationSnapshot?.pip_size || selectedInstrument.pip_size) ? reusableCalculationSnapshot?.pip_size || selectedInstrument.pip_size! : reusableCalculationSnapshot?.price_increment || selectedInstrument.price_increment)
         : calcPips(pair, direction, entry, exit);
       if (lot) pnl = (selectedInstrument
-        ? instrumentPnl(selectedInstrument, direction, entry, exit, lot, conversionRate || 1)
+        ? calculateSelectedInstrumentPnl(direction, entry, exit, lot)
         : calcPnl(pips, lot, pair)) - fees;
       outcome = pnl > 0 ? 'win' : pnl < 0 ? 'loss' : 'breakeven';
     }
 
-    if (entry != null && sl != null) {
-      const risk = Math.abs(entry - sl);
-      const reward = exit != null
-        ? (direction === 'long' ? exit - entry : entry - exit)
-        : tp != null
-          ? (direction === 'long' ? tp - entry : entry - tp)
-          : null;
-      if (risk > 0 && reward != null) rr = reward / risk;
-    }
-
     if (entry != null && tp != null && pair && lot) {
       potentialPips = selectedInstrument
-        ? (direction === 'long' ? tp - entry : entry - tp) / (selectedInstrument.asset_class === 'fx' && selectedInstrument.pip_size ? selectedInstrument.pip_size : selectedInstrument.price_increment)
+        ? (direction === 'long' ? tp - entry : entry - tp) / ((reusableCalculationSnapshot?.asset_class || selectedInstrument.asset_class) === 'fx' && (reusableCalculationSnapshot?.pip_size || selectedInstrument.pip_size) ? reusableCalculationSnapshot?.pip_size || selectedInstrument.pip_size! : reusableCalculationSnapshot?.price_increment || selectedInstrument.price_increment)
         : calcPips(pair, direction, entry, tp);
       potentialPnl = (selectedInstrument
-        ? instrumentPnl(selectedInstrument, direction, entry, tp, lot, conversionRate || 1)
+        ? calculateSelectedInstrumentPnl(direction, entry, tp, lot)
         : calcPnl(potentialPips, lot, pair)) - fees;
       const risk = sl != null ? Math.abs(entry - sl) : null;
       if (risk && risk > 0) {
-        const reward = direction === 'long' ? tp - entry : entry - tp;
-        potentialRr = reward / risk;
+        const stopRisk = selectedInstrument
+          ? Math.abs(calculateSelectedInstrumentPnl(direction, entry, sl!, lot)) + fees
+          : Math.abs(calcPnl(Math.abs(calcPips(pair, direction, entry, sl!)), lot, pair)) + fees;
+        potentialRr = stopRisk > 0 ? potentialPnl / stopRisk : null;
       }
+    }
+
+    if (entry != null && exit != null && sl != null && lot) {
+      const stopRisk = selectedInstrument
+        ? Math.abs(calculateSelectedInstrumentPnl(direction, entry, sl, lot)) + fees
+        : Math.abs(calcPnl(Math.abs(calcPips(pair, direction, entry, sl)), lot, pair)) + fees;
+      rr = stopRisk > 0 ? pnl / stopRisk : null;
     }
 
     const hasData = entry != null && pair.length > 0;
@@ -284,7 +296,7 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
     const instType = pair ? getInstrumentType(pair) : 'fx';
 
     return { pips, pnl, rr, outcome, potentialPips, potentialPnl, potentialRr, hasData, isClosed, instType };
-  }, [form.entry_price, form.exit_price, form.take_profit, form.lot_size, form.pair, form.direction, form.fees, stopLoss, selectedInstrument, conversionRate]);
+  })();
 
   const handleSubmit = async () => {
     setSaving(true);
@@ -348,14 +360,14 @@ export function TradeForm({ initial, onSubmit, onCancel }: TradeFormProps) {
       conversion_rate: needsConversion ? conversionRate : 1,
       fees: Math.max(0, Number(form.fees) || 0),
         risk_override_reason: riskLimitExceeded ? riskOverrideReason.trim() || null : null,
-      calculation_snapshot: selectedInstrument && selectedAccount
+      calculation_snapshot: reusableCalculationSnapshot || (selectedInstrument && selectedAccount
         ? createTradeCalculationSnapshot(selectedInstrument, selectedAccount.base_currency, conversionRate || 1)
-        : null,
+        : null),
       example_values_confirmed: true,
       capture_mode: form.capture_mode || 'live',
       entry_price_confirmed_actual: form.capture_mode === 'live' ? actualFillConfirmed : false,
       risk_percent: selectedAccount && stopLoss && selectedInstrument && form.lot_size && effectiveBalance > 0
-        ? (Math.abs(instrumentPnl(selectedInstrument, 'long', form.entry_price!, Number(stopLoss), form.lot_size, conversionRate || 1)) + Math.max(0, Number(form.fees) || 0)) / effectiveBalance * 100
+        ? (Math.abs(calculateSelectedInstrumentPnl('long', form.entry_price!, Number(stopLoss), form.lot_size)) + Math.max(0, Number(form.fees) || 0)) / effectiveBalance * 100
         : form.risk_percent,
       status: autoStatus,
       pips: parseFloat(autoPips.toFixed(1)),

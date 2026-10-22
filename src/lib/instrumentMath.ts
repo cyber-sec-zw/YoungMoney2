@@ -29,6 +29,19 @@ export function instrumentPnl(
   return ticksMoved * tickValue * quantity * conversionRate;
 }
 
+export function instrumentPnlFromSnapshot(
+  snapshot: TradeCalculationSnapshot,
+  direction: 'long' | 'short',
+  entry: number,
+  exit: number,
+  quantity: number,
+): number {
+  if (![entry, exit, quantity, snapshot.price_increment, snapshot.tick_value, snapshot.conversion_rate].every(Number.isFinite)
+    || snapshot.price_increment <= 0 || snapshot.tick_value <= 0 || snapshot.conversion_rate <= 0 || quantity <= 0) return Number.NaN;
+  const signedMove = direction === 'long' ? exit - entry : entry - exit;
+  return signedMove / snapshot.price_increment * snapshot.tick_value * quantity * snapshot.conversion_rate;
+}
+
 export function createTradeCalculationSnapshot(
   instrument: MarketInstrument,
   accountCurrency: string,
@@ -66,11 +79,13 @@ export function calculatePositionSize(
   entry: number,
   stop: number,
   conversionRate: number,
+  fixedCosts = 0,
 ): number | null {
   const distance = Math.abs(entry - stop);
-  if (![entry, stop, conversionRate, accountBalance, riskPercent, instrument.price_increment, instrument.contract_multiplier].every(Number.isFinite)
+  if (![entry, stop, conversionRate, accountBalance, riskPercent, fixedCosts, instrument.price_increment, instrument.contract_multiplier].every(Number.isFinite)
     || !distance || instrument.price_increment <= 0 || instrument.contract_multiplier <= 0 || conversionRate <= 0 || accountBalance <= 0 || riskPercent <= 0) return null;
-  const riskBudget = accountBalance * riskPercent / 100;
+  const riskBudget = accountBalance * riskPercent / 100 - Math.max(0, fixedCosts);
+  if (riskBudget <= 0) return null;
   const tickValue = instrument.tick_value ?? instrument.price_increment * instrument.contract_multiplier;
   if (!Number.isFinite(tickValue) || tickValue <= 0) return null;
   const riskPerQuantity = distance / instrument.price_increment * tickValue * conversionRate;

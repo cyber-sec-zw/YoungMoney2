@@ -57,3 +57,13 @@ test('absolute USD cap can tighten the percentage loss limit', () => {
   assert.equal(metrics.dailyLossRemaining, 10);
   assert.equal(metrics.status, 'warning');
 });
+
+test('a breached maximum drawdown is a danger state', () => {
+  const trades = [
+    makeTrade({ id: 'win', pnl: 200, exit_time: '2026-10-19T15:00:00.000Z' }),
+    makeTrade({ id: 'loss', pnl: -100, exit_time: '2026-10-20T15:00:00.000Z' }),
+  ];
+  const metrics = calculateRiskMetrics(trades, { ...options, maxDrawdownPct: 1 });
+  assert.equal(metrics.currentDrawdownPct, 1);
+  assert.equal(metrics.status, 'danger');
+});

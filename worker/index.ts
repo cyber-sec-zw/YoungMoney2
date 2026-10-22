@@ -1,5 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 import { WORKSPACE_TABLES } from '../src/lib/workspaceTables';
+import { deleteOwnedMedia } from '../src/lib/mediaCleanup';
 
 export interface Env {
   DB: D1Database;
@@ -298,6 +299,45 @@ async function mediaRoute(request: Request, env: Env, user: Record<string, unkno
   return response({ error: 'Unsupported media action.' }, 404);
 }
 
+async function cleanupMemberMedia(env: Env, ownerId: string): Promise<void> {
+  const configuredStorage = getSupabaseStorageConfig(env);
+  if (configuredStorage && 'error' in configuredStorage) throw new Error('Private media storage is not configured correctly.');
+  const supabaseStorage = configuredStorage && 'key' in configuredStorage ? configuredStorage : null;
+
+  await deleteOwnedMedia(ownerId, {
+    listSupabasePage: async (userId, offset, limit) => {
+      if (!supabaseStorage) return { paths: [], hasMore: false };
+      const result = await supabaseStorageRequest(supabaseStorage, 'object/list/trading-media', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prefix: userId, limit, offset, sortBy: { column: 'name', order: 'asc' } }),
+      });
+      if (!result.ok) throw new Error('Private media listing failed.');
+      const entries = await result.json() as { id?: string | null; name?: string }[];
+      const paths = entries.filter(entry => entry.id && entry.name).map(entry => `${userId}/${entry.name}`);
+      return { paths, hasMore: entries.length === limit };
+    },
+    removeSupabase: async paths => {
+      if (!supabaseStorage || !paths.length) return;
+      const result = await supabaseStorageRequest(supabaseStorage, 'object/trading-media', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prefixes: paths.map(path => path.slice(ownerId.length + 1)) }),
+      });
+      if (!result.ok) throw new Error('Private media deletion failed.');
+    },
+    listR2Page: async (prefix, cursor) => {
+      if (!env.MEDIA) return { keys: [], truncated: false };
+      const page = await env.MEDIA.list({ prefix, limit: 1000, cursor });
+      const keys = page.objects.map(object => object.key);
+      return page.truncated
+        ? { keys, truncated: true, cursor: page.cursor }
+        : { keys, truncated: false };
+    },
+    deleteR2: async keys => { if (env.MEDIA && keys.length) await env.MEDIA.delete(keys); },
+  });
+}
+
 async function adminRoute(request: Request, env: Env, user: Record<string, unknown>) {
   if (user.role !== 'admin' || user.account_status !== 'active') return response({ error: 'Administrator access required.' }, 403);
   const input = await request.json<{ action: string; targetUserId?: string }>();
@@ -332,6 +372,12 @@ async function adminRoute(request: Request, env: Env, user: Record<string, unkno
     return response({ ok: true });
   }
   if (input.action === 'delete') {
+    try {
+      await cleanupMemberMedia(env, String(target.id));
+    } catch {
+      await audit(env.DB, String(user.id), String(target.id), 'delete', 'failed', { stage: 'media_cleanup' });
+      return response({ error: 'Private media cleanup failed. The member account and records were retained; retry after checking storage configuration.' }, 502);
+    }
     await env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(target.id).run();
     await env.DB.prepare('DELETE FROM workspace_records WHERE user_id=?').bind(target.id).run();
     await audit(env.DB, String(user.id), String(target.id), 'delete', 'success', { records_deleted: true });

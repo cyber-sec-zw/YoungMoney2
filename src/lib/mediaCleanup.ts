@@ -21,13 +21,17 @@ async function deleteBatches(paths: string[], remove: (batch: string[]) => Promi
 }
 
 export async function deleteOwnedMedia(ownerId: string, adapter: MediaCleanupAdapter): Promise<void> {
+  if (!ownerId || ownerId.includes('/') || ownerId.includes('\\')) throw new Error('Invalid media owner ID.');
   const supabasePaths: string[] = [];
   let offset = 0;
-  while (true) {
+  let hasMore = true;
+  while (hasMore) {
     const page = await adapter.listSupabasePage(ownerId, offset, listPageSize);
     page.paths.forEach(path => assertOwnedPath(path, ownerId));
     supabasePaths.push(...page.paths);
-    if (!page.hasMore) break;
+    hasMore = page.hasMore;
+    if (!hasMore) continue;
+    if (!page.paths.length) throw new Error('Supabase media listing reported more results without returning any paths.');
     offset += page.paths.length;
   }
   await deleteBatches(supabasePaths, adapter.removeSupabase);

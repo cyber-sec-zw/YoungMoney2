@@ -49,11 +49,10 @@ export function TradeCalculator() {
       ? Math.abs(instrumentPnl(instrument, direction, entryPrice, stopPrice, size, conversionRate)) + estimatedFees
       : 0;
     const riskPercent = account && stopRisk > 0 ? stopRisk / account.balance * 100 : 0;
-    const reward = grossPnl > 0 ? grossPnl : 0;
-    const rr = stopRisk > 0 ? reward / stopRisk : null;
     const suggestedSize = instrument && account && validConversion && Number.isFinite(entryPrice) && entryPrice > 0 && Number.isFinite(stopPrice) && stopPrice > 0
-      ? calculatePositionSize(instrument, account.balance, account.risk_per_trade_pct, entryPrice, stopPrice, conversionRate)
+      ? calculatePositionSize(instrument, account.balance, account.risk_per_trade_pct, entryPrice, stopPrice, conversionRate, estimatedFees)
       : null;
+    const rr = stopRisk > 0 ? pnl / stopRisk : null;
 
     return { distance, pnl, stopRisk, riskPercent, rr, suggestedSize, hasData: hasPrices && validInputs, validConversion };
   }, [account, conversionRate, conversionRequired, direction, entry, exit, fees, instrument, quantity, stopLoss]);

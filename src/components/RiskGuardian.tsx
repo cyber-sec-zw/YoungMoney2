@@ -21,7 +21,7 @@ export function RiskGuardian({ trades, settings, account, plan, onConfigure }: R
     };
     const maxDailyLossPct = strictest([account.daily_loss_limit_pct, plan?.max_daily_loss_pct, settings?.max_daily_loss_pct], 3);
     const maxRiskPerTradePct = strictest([account.risk_per_trade_pct, plan?.max_risk_per_trade_pct, settings?.max_risk_per_trade_pct], 1);
-    const maxDrawdownPct = strictest([plan?.max_drawdown_pct, settings?.max_drawdown_pct], 10);
+    const maxDrawdownPct = strictest([account.max_loss_limit_pct, plan?.max_drawdown_pct, settings?.max_drawdown_pct], 10);
     const maxDailyLossAmount = account.base_currency === 'USD' ? settings?.daily_loss_limit_amount : null;
     return calculateRiskMetrics(trades, {
       accountId: account.id,
@@ -103,7 +103,11 @@ export function RiskGuardian({ trades, settings, account, plan, onConfigure }: R
           <AlertOctagon size={18} className="text-error-500 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-sm font-semibold text-error-500">
-              {riskData.dailyLossPctUsed >= 100 ? 'Daily loss limit reached' : 'Daily entry limit reached'}
+              {riskData.dailyLossPctUsed >= 100
+                ? 'Daily loss limit reached'
+                : riskData.todayTradeCount >= riskData.maxDailyTrades
+                  ? 'Daily entry limit reached'
+                  : 'Maximum drawdown reached'}
             </p>
             <p className="text-xs text-secondary mt-0.5">
               This is an advisory based on recorded trades, not a broker-side lock. Review the account rules before considering another entry.

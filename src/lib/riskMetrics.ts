@@ -97,7 +97,9 @@ export function calculateRiskMetrics(trades: Trade[], options: RiskMetricOptions
   const maxDrawdownPctLimit = Math.max(0, options.maxDrawdownPct);
 
   let status: RiskMetrics['status'] = 'safe';
-  if ((dailyLossLimitAmount > 0 && dailyLossPctUsed >= 100) || todayTradeCount >= maxDailyTrades) {
+  if ((dailyLossLimitAmount > 0 && dailyLossPctUsed >= 100)
+    || todayTradeCount >= maxDailyTrades
+    || (maxDrawdownPctLimit > 0 && currentDrawdownPct >= maxDrawdownPctLimit)) {
     status = 'danger';
   } else if (dailyLossPctUsed >= 70 || todayTradeCount >= maxDailyTrades - 1 || (maxDrawdownPctLimit > 0 && currentDrawdownPct >= maxDrawdownPctLimit * 0.8)) {
     status = 'warning';
